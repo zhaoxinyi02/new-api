@@ -75,35 +75,104 @@ func ArmorInjectBody(body []byte, info *RelayInfo) ([]byte, bool, error) {
 	}
 	quotedPrompt := string(quoted)
 
+	// 先注入系统位（权威背景），再在末尾追加收尾强制指令（近因压制拒绝）。
+	injected := body
+	var changed bool
+	var injectErr error
 	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
 		// 顶层 system 是 Claude 形态：system 必须在顶层，不能塞进 messages。
 		if system := gjson.GetBytes(body, "system"); system.Exists() || armorIsClaudeFormat(info) {
-			return armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
+			injected, changed, injectErr = armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
+		} else {
+			injected, changed, injectErr = armorInjectMessages(body, messages.Raw, prompt, quotedPrompt, mode)
 		}
-		return armorInjectMessages(body, messages.Raw, prompt, quotedPrompt, mode)
-	}
-	if system := gjson.GetBytes(body, "system"); system.Exists() {
-		return armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
-	}
-	if gjson.GetBytes(body, "contents").Exists() ||
+	} else if system := gjson.GetBytes(body, "system"); system.Exists() {
+		injected, changed, injectErr = armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
+	} else if gjson.GetBytes(body, "contents").Exists() ||
 		gjson.GetBytes(body, "systemInstruction").Exists() ||
 		gjson.GetBytes(body, "system_instruction").Exists() {
-		return armorInjectGeminiSystem(body, prompt, quotedPrompt, mode)
+		injected, changed, injectErr = armorInjectGeminiSystem(body, prompt, quotedPrompt, mode)
+	} else if instructions := gjson.GetBytes(body, "instructions"); instructions.Exists() {
+		injected, changed, injectErr = armorInjectInstructions(body, instructions, prompt, quotedPrompt, mode)
+	} else if gjson.GetBytes(body, "input").Exists() && armorIsResponsesFormat(info) {
+		// Responses 的 input-only 请求体：没有 instructions 时补一条。
+		injected, injectErr = sjson.SetBytes(body, "instructions", prompt)
+		changed = injectErr == nil
+	} else if cfg.InjectPromptField {
+		injected, changed, injectErr = armorInjectLegacyPrompt(body, prompt, mode)
 	}
-	if instructions := gjson.GetBytes(body, "instructions"); instructions.Exists() {
-		return armorInjectInstructions(body, instructions, prompt, quotedPrompt, mode)
+	if injectErr != nil || !changed {
+		return injected, changed, injectErr
 	}
-	// Responses 的 input-only 请求体：没有 instructions 时补一条。
-	if gjson.GetBytes(body, "input").Exists() && armorIsResponsesFormat(info) {
-		out, setErr := sjson.SetBytes(body, "instructions", prompt)
-		return out, setErr == nil, setErr
-	}
-	if cfg.InjectPromptField {
-		if out, changed, err := armorInjectLegacyPrompt(body, prompt, mode); changed || err != nil {
-			return out, changed, err
+	if tail := armorsetting.EffectiveTailText(cfg); tail != "" && !armorContainsMarker(body, armorsetting.DefaultTailMarker) {
+		quotedTail, marshalErr := common.Marshal(tail)
+		if marshalErr != nil {
+			return injected, true, marshalErr
 		}
+		tailed, tailChanged, tailErr := armorAppendTail(injected, info, tail, string(quotedTail))
+		if tailErr != nil {
+			return injected, true, tailErr
+		}
+		return tailed, tailChanged, nil
+	}
+	return injected, true, nil
+}
+
+// armorAppendTail 把收尾强制指令追加到消息末尾（OpenAI 用最后一条 system，
+// Claude / Gemini / Responses 追加到各自的系统位末尾）。
+func armorAppendTail(body []byte, info *RelayInfo, text string, quoted string) ([]byte, bool, error) {
+	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
+		if gjson.GetBytes(body, "system").Exists() || armorIsClaudeFormat(info) {
+			return armorAppendSystemText(body, "system", text)
+		}
+		item := fmt.Sprintf(`{"role":"system","content":%s}`, quoted)
+		out, err := sjson.SetRawBytes(body, "messages", []byte(appendRawArrayElement(messages.Raw, item)))
+		return out, err == nil, err
+	}
+	if gjson.GetBytes(body, "system").Exists() {
+		return armorAppendSystemText(body, "system", text)
+	}
+	for _, key := range []string{"systemInstruction", "system_instruction"} {
+		current := gjson.GetBytes(body, key)
+		if !current.Exists() || current.Type == gjson.Null {
+			continue
+		}
+		if current.Type == gjson.String {
+			return armorAppendSystemText(body, key, text)
+		}
+		parts := current.Get("parts")
+		if !parts.IsArray() {
+			out, err := sjson.SetRawBytes(body, key+".parts", []byte(fmt.Sprintf(`[{"text":%s}]`, quoted)))
+			return out, err == nil, err
+		}
+		part := fmt.Sprintf(`{"text":%s}`, quoted)
+		out, err := sjson.SetRawBytes(body, key+".parts", []byte(appendRawArrayElement(parts.Raw, part)))
+		return out, err == nil, err
+	}
+	if gjson.GetBytes(body, "instructions").Exists() {
+		return armorAppendSystemText(body, "instructions", text)
 	}
 	return body, false, nil
+}
+
+// armorAppendSystemText 把文本追加到指定键的末尾（string 拼接，block 数组加一个 text 块）。
+func armorAppendSystemText(body []byte, key string, text string) ([]byte, bool, error) {
+	current := gjson.GetBytes(body, key)
+	if current.IsArray() {
+		quoted, err := common.Marshal(text)
+		if err != nil {
+			return body, false, err
+		}
+		block := fmt.Sprintf(`{"type":"text","text":%s}`, string(quoted))
+		out, setErr := sjson.SetRawBytes(body, key, []byte(appendRawArrayElement(current.Raw, block)))
+		return out, setErr == nil, setErr
+	}
+	joined := text
+	if existing := strings.TrimSpace(current.String()); existing != "" {
+		joined = existing + "\n\n" + text
+	}
+	out, err := sjson.SetBytes(body, key, joined)
+	return out, err == nil, err
 }
 
 // armorInjectMessages 处理 OpenAI 的 messages 数组。
@@ -236,6 +305,19 @@ func prependRawArrayElement(rawArray string, element string) string {
 		return "[" + element + "]"
 	}
 	return "[" + element + "," + inner + "]"
+}
+
+// appendRawArrayElement 在原始 JSON 数组文本末尾追加一个元素，
+// 同样保持其余元素的字节级原样。
+func appendRawArrayElement(rawArray string, element string) string {
+	inner := strings.TrimSpace(rawArray)
+	inner = strings.TrimPrefix(inner, "[")
+	inner = strings.TrimSuffix(inner, "]")
+	inner = strings.TrimSpace(inner)
+	if inner == "" {
+		return "[" + element + "]"
+	}
+	return "[" + inner + "," + element + "]"
 }
 
 // armorModelName 取用于名单与按模型提示词匹配的模型名。

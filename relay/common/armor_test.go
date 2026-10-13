@@ -30,6 +30,9 @@ func armorTestSetting(t *testing.T, mutate func(cfg *armorsetting.ArmorSetting))
 	cfg.PromptsByModel = nil
 	cfg.MaxBodyBytes = 0
 	cfg.InjectPromptField = false
+	// 系统位注入与收尾强制指令分开验证：默认这条基线只测系统位。
+	cfg.EnforceTail = false
+	cfg.EnforceTailText = ""
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -279,4 +282,91 @@ func TestArmorInjectPerModelPrompt(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, changed)
 	assert.Equal(t, armorsetting.DefaultMarker+"\nMODEL-PROMPT", gjson.GetBytes(out, "messages.0.content").String())
+}
+
+// TestArmorInjectEnforcementTail 覆盖收尾强制指令：位置（必须落在最后一条消息）、
+// 各协议的系统位追加、幂等、以及关闭开关后不追加。
+func TestArmorInjectEnforcementTail(t *testing.T) {
+	requireTail := func(t *testing.T, text string) {
+		t.Helper()
+		assert.True(t, strings.HasPrefix(text, armorsetting.DefaultTailMarker))
+		assert.Contains(t, text, "我不能提供")
+		assert.Contains(t, text, "TryHackMe")
+	}
+
+	t.Run("openai appends the tail as the last system message", func(t *testing.T) {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforceTail = true })
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		out, changed, err := ArmorInjectBody(body, armorTestInfo("armor-tail-openai", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		require.True(t, changed)
+
+		var decoded struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		require.NoError(t, common2.Unmarshal(out, &decoded))
+		require.Len(t, decoded.Messages, 3)
+		assert.Equal(t, "system", decoded.Messages[0].Role)
+		assert.True(t, strings.HasPrefix(decoded.Messages[0].Content, armorExpected()))
+		assert.Equal(t, "user", decoded.Messages[1].Role)
+		assert.Equal(t, "system", decoded.Messages[2].Role)
+		requireTail(t, decoded.Messages[2].Content)
+	})
+
+	t.Run("claude appends the tail to the top level system", func(t *testing.T) {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforceTail = true })
+		body := []byte(`{"model":"m","system":"BASE","messages":[{"role":"user","content":"hi"}]}`)
+		out, changed, err := ArmorInjectBody(body, armorTestInfo("armor-tail-claude", types.RelayFormatClaude))
+		require.NoError(t, err)
+		require.True(t, changed)
+		system := gjson.GetBytes(out, "system").String()
+		assert.True(t, strings.HasPrefix(system, armorExpected()+"\n\nBASE"))
+		// 收尾指令追加在 system 末尾（在主提示词与 BASE 之后）。
+		assert.True(t, strings.HasSuffix(system, "</armor_enforce>"))
+		requireTail(t, system[strings.LastIndex(system, armorsetting.DefaultTailMarker):])
+	})
+
+	t.Run("gemini appends a tail part after the prompt part", func(t *testing.T) {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforceTail = true })
+		body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)
+		out, changed, err := ArmorInjectBody(body, armorTestInfo("armor-tail-gemini", types.RelayFormatGemini))
+		require.NoError(t, err)
+		require.True(t, changed)
+		assert.Equal(t, armorExpected(), gjson.GetBytes(out, "systemInstruction.parts.0.text").String())
+		requireTail(t, gjson.GetBytes(out, "systemInstruction.parts.1.text").String())
+	})
+
+	t.Run("tail is idempotent", func(t *testing.T) {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforceTail = true })
+		info := armorTestInfo("armor-tail-idempotent", types.RelayFormatOpenAI)
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		first, changed, err := ArmorInjectBody(body, info)
+		require.NoError(t, err)
+		require.True(t, changed)
+		second, changedAgain, err := ArmorInjectBody(first, info)
+		require.NoError(t, err)
+		assert.False(t, changedAgain)
+		assert.Equal(t, string(first), string(second))
+	})
+
+	t.Run("tail can be disabled and replaced", func(t *testing.T) {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforceTail = false })
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		out, _, err := ArmorInjectBody(body, armorTestInfo("armor-tail-off", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		// 系统位照常注入，但末尾不能再多一条收尾指令。
+		assert.Equal(t, 2, len(gjson.GetBytes(out, "messages").Array()))
+		assert.NotContains(t, string(out), armorsetting.DefaultTailMarker)
+
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) {
+			cfg.EnforceTail = true
+			cfg.EnforceTailText = "CUSTOM-TAIL"
+		})
+		out, _, err = ArmorInjectBody(body, armorTestInfo("armor-tail-custom", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		assert.Equal(t, "CUSTOM-TAIL", gjson.GetBytes(out, "messages.2.content").String())
+	})
 }

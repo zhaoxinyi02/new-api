@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -252,14 +253,14 @@ type metadataSyncCandidate struct {
 	VendorToCreate string                `json:"vendor_to_create,omitempty"`
 }
 
-func fetchMetadataCatalog(c *gin.Context, locale string) (metadataSyncSource, map[string]model.MetadataValues, map[string]model.Vendor, error) {
+func fetchMetadataCatalog(parent context.Context, locale string) (metadataSyncSource, map[string]model.MetadataValues, map[string]model.Vendor, error) {
 	resolved, valid := normalizeLocale(locale)
 	if !valid {
 		return metadataSyncSource{}, nil, nil, errors.New("unsupported metadata language")
 	}
 	modelsURL, vendorsURL := getUpstreamURLs(resolved)
 	source := metadataSyncSource{Locale: resolved, ModelsURL: modelsURL, VendorsURL: vendorsURL}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(common.GetEnvOrDefault("SYNC_HTTP_TIMEOUT_SECONDS", 15))*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(common.GetEnvOrDefault("SYNC_HTTP_TIMEOUT_SECONDS", 15))*time.Second)
 	defer cancel()
 	var modelsEnv upstreamEnvelope[upstreamModel]
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
@@ -314,12 +315,107 @@ func fetchMetadataCatalog(c *gin.Context, locale string) (metadataSyncSource, ma
 	return source, models, vendors, nil
 }
 
+// metadataSnapshotDateSuffix matches the dated snapshot ids vendors publish
+// next to a rolling alias (doubao-seed-2-1-pro-260628).
+var metadataSnapshotDateSuffix = regexp.MustCompile(`-[0-9]{6,8}$`)
+
+// metadataAliasTargets maps a site model id to the catalog entry documenting
+// the same model when the catalog spells it differently and no rule can derive
+// the mapping. Keys and values are compared lower-cased.
+var metadataAliasTargets = map[string]string{
+	// The catalog names DeepSeek V4.1 Flash "deepseek-v4-flash".
+	"deepseek-v4-1-flash": "deepseek-v4-flash",
+}
+
+// metadataModelKey folds the spelling differences between site model ids and
+// catalog ids into one key: case, the separator inside version numbers, a
+// trailing "ga", and dated snapshot suffixes are ignored. The site's
+// doubao-seed-2-1-pro therefore resolves to the catalog's doubao-seed-2.1-turbo
+// style alias or to its doubao-seed-2-1-pro-260628 snapshot.
+func metadataModelKey(name string) string {
+	key := strings.ToLower(strings.TrimSpace(name))
+	key = strings.NewReplacer(".", "-", "_", "-", " ", "").Replace(key)
+	key = strings.TrimSuffix(key, "-ga")
+	return metadataSnapshotDateSuffix.ReplaceAllString(key, "")
+}
+
+type metadataResolver struct {
+	exact map[string]model.MetadataValues
+	byKey map[string][]string
+}
+
+func newMetadataResolver(upstream map[string]model.MetadataValues) metadataResolver {
+	resolver := metadataResolver{exact: upstream, byKey: make(map[string][]string, len(upstream))}
+	for name := range upstream {
+		key := metadataModelKey(name)
+		resolver.byKey[key] = append(resolver.byKey[key], name)
+	}
+	for key := range resolver.byKey {
+		sort.Slice(resolver.byKey[key], func(i, j int) bool {
+			left, right := resolver.byKey[key][i], resolver.byKey[key][j]
+			leftDated := metadataSnapshotDateSuffix.MatchString(strings.ToLower(left))
+			rightDated := metadataSnapshotDateSuffix.MatchString(strings.ToLower(right))
+			if leftDated != rightDated {
+				return !leftDated // prefer the undated rolling alias
+			}
+			if len(left) != len(right) {
+				return len(left) < len(right)
+			}
+			return left < right
+		})
+	}
+	return resolver
+}
+
+// resolve returns the catalog values for a site model id: an exact match first,
+// then the explicit alias table, then separator/date-insensitive matching.
+func (r metadataResolver) resolve(name string) (model.MetadataValues, bool) {
+	if values, ok := r.exact[name]; ok {
+		return values, true
+	}
+	if target, ok := metadataAliasTargets[strings.ToLower(strings.TrimSpace(name))]; ok {
+		if values, ok := r.exact[target]; ok {
+			return values, true
+		}
+	}
+	names := r.byKey[metadataModelKey(name)]
+	if len(names) == 0 {
+		return model.MetadataValues{}, false
+	}
+	return r.exact[names[0]], true
+}
+
+// metadataFieldDiff lists the sync fields where the site record differs from
+// the catalog values. A site record that does not exist differs in every field.
+func metadataFieldDiff(local *model.Model, localVendor *model.Vendor, upstream model.MetadataValues) []string {
+	if local == nil {
+		return append([]string(nil), model.MetadataSyncFields...)
+	}
+	localValues := model.MetadataValues{Description: local.Description, Icon: local.Icon, Tags: local.Tags, Endpoints: local.Endpoints, NameRule: local.NameRule, Status: local.Status}
+	if localVendor != nil {
+		localValues.Vendor = localVendor.Name
+	}
+	localRaw, _ := common.Marshal(localValues)
+	upstreamRaw, _ := common.Marshal(upstream)
+	var localFields, upstreamFields map[string]any
+	_ = common.Unmarshal(localRaw, &localFields)
+	_ = common.Unmarshal(upstreamRaw, &upstreamFields)
+	fields := make([]string, 0, len(model.MetadataSyncFields))
+	for _, field := range model.MetadataSyncFields {
+		if localFields[field] != upstreamFields[field] {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+
 func SyncUpstreamPreview(c *gin.Context) {
-	source, upstream, upstreamVendors, err := fetchMetadataCatalog(c, c.Query("locale"))
+	source, upstream, upstreamVendors, err := fetchMetadataCatalog(c.Request.Context(), c.Query("locale"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	resolver := newMetadataResolver(upstream)
 	locals, vendors, err := model.GetMetadataSyncState(model.DB)
 	if err != nil {
 		common.ApiError(c, err)
@@ -359,7 +455,7 @@ func SyncUpstreamPreview(c *gin.Context) {
 			candidate.Scope = "site"
 		}
 		local := locals[name]
-		up, found := upstream[name]
+		up, found := resolver.resolve(name)
 		if !found {
 			candidate.Kind = "missing_upstream"
 			candidates = append(candidates, candidate)
@@ -397,10 +493,8 @@ func SyncUpstreamPreview(c *gin.Context) {
 		var localFields, upFields map[string]any
 		_ = common.Unmarshal(localRaw, &localFields)
 		_ = common.Unmarshal(upRaw, &upFields)
-		for _, field := range model.MetadataSyncFields {
-			if local == nil || localFields[field] != upFields[field] {
-				candidate.Fields = append(candidate.Fields, metadataSyncField{Field: field, Local: localFields[field], Upstream: upFields[field]})
-			}
+		for _, field := range metadataFieldDiff(local, localVendor, up) {
+			candidate.Fields = append(candidate.Fields, metadataSyncField{Field: field, Local: localFields[field], Upstream: upFields[field]})
 		}
 		if local != nil && len(candidate.Fields) == 0 {
 			candidate.Kind = "unchanged"
@@ -420,7 +514,7 @@ func SyncUpstreamModels(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Preview and select metadata changes before applying"})
 		return
 	}
-	source, upstream, vendors, err := fetchMetadataCatalog(c, request.Locale)
+	source, upstream, vendors, err := fetchMetadataCatalog(c.Request.Context(), request.Locale)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -429,9 +523,10 @@ func SyncUpstreamModels(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "Upstream metadata changed; preview again"})
 		return
 	}
+	resolver := newMetadataResolver(upstream)
 	updates := make([]model.MetadataSyncUpdate, 0, len(request.Selections))
 	for _, selection := range request.Selections {
-		values, exists := upstream[selection.ModelName]
+		values, exists := resolver.resolve(selection.ModelName)
 		if !exists {
 			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "Selected upstream model is no longer available"})
 			return

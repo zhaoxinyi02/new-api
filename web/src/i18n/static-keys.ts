@@ -210,6 +210,7 @@ export const STATIC_I18N_KEYS = [
   'Master instances run scheduled background tasks.',
   'Worker instances do not run master-only background tasks.',
   'Drawing task polling',
+  'Model metadata sync',
 
   // Pricing constants
   'Name',

@@ -874,6 +874,7 @@
     "Batch updated channel status ({{count}}/{{total}} changed)": "Batch updated channel status ({{count}}/{{total}} changed)",
     "Batch upstream model update": "Batch upstream model update",
     "Batch upstream model updates applied: {{channels}} channels, {{added}} added, {{removed}} removed, {{fails}} failed": "Batch upstream model updates applied: {{channels}} channels, {{added}} added, {{removed}} removed, {{fails}} failed",
+    "Model metadata sync": "Model metadata sync",
     "Before conversion": "Before conversion",
     "Best for single-tenant deployments. Pricing and billing options stay hidden.": "Best for single-tenant deployments. Pricing and billing options stay hidden.",
     "Best TTFT": "Best TTFT",

@@ -19,6 +19,7 @@ import (
 func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(channelTestHandler{})
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
+	service.RegisterSystemTaskHandler(modelMetadataHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 }
@@ -107,6 +108,28 @@ func (modelUpdateHandler) Run(ctx context.Context, task *model.SystemTask, runne
 		return
 	}
 	summary := runChannelUpstreamModelUpdateTaskOnce(ctx, payload.Manual, !payload.Manual, service.NewSystemTaskProgressReporter(task, runnerID))
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+// modelMetadataHandler runs the scheduled upstream metadata sync. It fills or
+// refreshes description, icon, tags and vendor for every model the site serves
+// and never touches records whose "allow metadata sync" switch is off.
+type modelMetadataHandler struct{}
+
+func (modelMetadataHandler) Type() string { return model.SystemTaskTypeModelMetadata }
+
+func (modelMetadataHandler) Enabled() bool { return metadataAutoSyncEnabled() }
+
+func (modelMetadataHandler) Interval() time.Duration { return metadataAutoSyncInterval() }
+
+func (modelMetadataHandler) NewPayload() any { return nil }
+
+func (modelMetadataHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := runModelMetadataAutoSyncOnce(ctx, metadataAutoSyncLocale())
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 

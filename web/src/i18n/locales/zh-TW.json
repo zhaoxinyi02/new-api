@@ -874,6 +874,7 @@
     "Batch updated channel status ({{count}}/{{total}} changed)": "批次更新渠道狀態（{{count}}/{{total}} 個已變更）",
     "Batch upstream model update": "上游模型大量更新",
     "Batch upstream model updates applied: {{channels}} channels, {{added}} added, {{removed}} removed, {{fails}} failed": "已大量處理上游模型更新：渠道 {{channels}} 個，加入 {{added}} 個，刪除 {{removed}} 個，失敗 {{fails}} 個",
+    "Model metadata sync": "模型資料自動同步",
     "Before conversion": "轉換前",
     "Best for single-tenant deployments. Pricing and billing options stay hidden.": "適合單用戶部署。定價和收費選項將被隱藏。",
     "Best TTFT": "最優 TTFT",

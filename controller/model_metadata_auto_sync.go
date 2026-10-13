@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -40,6 +41,36 @@ func metadataAutoSyncLocale() string {
 	return locale
 }
 
+// metadataVendorPrefixes links models the catalog does not document yet to the
+// vendor that publishes them, so they still show a vendor and logo instead of
+// the "missing metadata" badge. The vendor record itself still comes from the
+// catalog's vendor list.
+var metadataVendorPrefixes = []struct{ prefix, vendor string }{
+	{"doubao-", "Volcengine Ark"},
+	{"ark-", "Volcengine Ark"},
+	{"deepseek-", "DeepSeek"},
+	{"kimi-", "Moonshot AI"},
+	{"glm-", "Z.AI"},
+	{"minimax-", "MiniMax (minimax.io)"},
+}
+
+// fallbackMetadataValues returns vendor-only metadata for a model the catalog
+// does not describe. An unrecognized prefix, or a vendor the catalog does not
+// list, leaves the model unresolved.
+func fallbackMetadataValues(name string, upstreamVendors map[string]model.Vendor) (model.MetadataValues, bool) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	for _, rule := range metadataVendorPrefixes {
+		if !strings.HasPrefix(key, rule.prefix) {
+			continue
+		}
+		if _, ok := upstreamVendors[rule.vendor]; !ok {
+			return model.MetadataValues{}, false
+		}
+		return model.MetadataValues{Vendor: rule.vendor, NameRule: model.NameRuleExact, Status: 1}, true
+	}
+	return model.MetadataValues{}, false
+}
+
 type modelMetadataAutoSyncSummary struct {
 	CheckedModels    int      `json:"checked_models"`
 	CreatedModels    []string `json:"created_models"`
@@ -62,7 +93,7 @@ func runModelMetadataAutoSyncOnce(ctx context.Context, locale string) (modelMeta
 	// A single conflict means an admin edited metadata between planning and
 	// applying; re-planning against fresh state resolves it.
 	for attempt := range 2 {
-		plan, updates, err := planModelMetadataAutoSync(resolver)
+		plan, updates, err := planModelMetadataAutoSync(resolver, upstreamVendors)
 		if err != nil {
 			return summary, err
 		}
@@ -89,7 +120,7 @@ func runModelMetadataAutoSyncOnce(ctx context.Context, locale string) (modelMeta
 // planModelMetadataAutoSync reads the current site state and returns the
 // metadata updates the catalog implies. The returned summary describes the plan
 // even when the caller ends up not applying it.
-func planModelMetadataAutoSync(resolver metadataResolver) (modelMetadataAutoSyncSummary, []model.MetadataSyncUpdate, error) {
+func planModelMetadataAutoSync(resolver metadataResolver, upstreamVendors map[string]model.Vendor) (modelMetadataAutoSyncSummary, []model.MetadataSyncUpdate, error) {
 	summary := modelMetadataAutoSyncSummary{CreatedModels: []string{}, UpdatedModels: []string{}, CreatedVendors: []string{}, UnresolvedModels: []string{}}
 	locals, vendors, err := model.GetMetadataSyncState(model.DB)
 	if err != nil {
@@ -119,14 +150,20 @@ func planModelMetadataAutoSync(resolver metadataResolver) (modelMetadataAutoSync
 	updates := make([]model.MetadataSyncUpdate, 0, len(names))
 	for _, name := range names {
 		summary.CheckedModels++
+		local := locals[name]
 		values, found := resolver.resolve(name)
+		// The vendor-only fallback only seeds a record for a model the catalog
+		// does not document. Once a record exists the admin owns it, so later
+		// manual edits are never overwritten.
+		if !found && local == nil {
+			values, found = fallbackMetadataValues(name, upstreamVendors)
+		}
 		if !found {
-			if _, exists := locals[name]; !exists {
+			if local == nil {
 				summary.UnresolvedModels = append(summary.UnresolvedModels, name)
 			}
 			continue
 		}
-		local := locals[name]
 		if local != nil && local.SyncOfficial == 0 {
 			continue
 		}

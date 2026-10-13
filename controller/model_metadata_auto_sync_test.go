@@ -115,22 +115,24 @@ func TestRunModelMetadataAutoSyncFillsSiteModels(t *testing.T) {
 	t.Setenv("SYNC_HTTP_RETRY", "1")
 
 	// Two models the site serves, one of which the admin pinned: it must keep
-	// its local description. A third model has no catalog entry at all.
+	// its local description. A third has no catalog entry but a recognized
+	// vendor prefix, and a fourth is unknown on both sides.
 	require.NoError(t, db.Create(&[]model.Ability{
 		{Model: "doubao-seed-2-1-pro", Group: "default", ChannelId: 1, Enabled: true},
 		{Model: "kimi-k3", Group: "default", ChannelId: 1, Enabled: true},
 		{Model: "kimi-k2-8-preview", Group: "default", ChannelId: 1, Enabled: true},
+		{Model: "unlisted-vendor-model", Group: "default", ChannelId: 1, Enabled: true},
 	}).Error)
 	pinned := &model.Model{ModelName: "kimi-k3", Description: "Pinned description", Icon: "Moonshot", Tags: "Tools", Status: 1, SyncOfficial: 0}
 	require.NoError(t, pinned.Insert())
 
 	summary, err := runModelMetadataAutoSyncOnce(context.Background(), "zh")
 	require.NoError(t, err)
-	assert.Equal(t, 3, summary.CheckedModels)
-	assert.Equal(t, []string{"doubao-seed-2-1-pro"}, summary.CreatedModels)
+	assert.Equal(t, 4, summary.CheckedModels)
+	assert.Equal(t, []string{"doubao-seed-2-1-pro", "kimi-k2-8-preview"}, summary.CreatedModels)
 	assert.Empty(t, summary.UpdatedModels)
-	assert.Equal(t, []string{"Volcengine Ark"}, summary.CreatedVendors)
-	assert.Equal(t, []string{"kimi-k2-8-preview"}, summary.UnresolvedModels)
+	assert.Equal(t, []string{"Volcengine Ark", "Moonshot AI"}, summary.CreatedVendors)
+	assert.Equal(t, []string{"unlisted-vendor-model"}, summary.UnresolvedModels)
 
 	var created model.Model
 	require.NoError(t, db.Where("model_name = ?", "doubao-seed-2-1-pro").First(&created).Error)
@@ -143,15 +145,44 @@ func TestRunModelMetadataAutoSyncFillsSiteModels(t *testing.T) {
 	assert.Equal(t, "Volcengine Ark", vendor.Name)
 	assert.Equal(t, "Doubao.Color", vendor.Icon)
 
+	// The vendored-but-undocumented model gets a record so the model list shows
+	// a vendor and logo, and an admin can fill the description in later.
+	var inferred model.Model
+	require.NoError(t, db.Where("model_name = ?", "kimi-k2-8-preview").First(&inferred).Error)
+	assert.Empty(t, inferred.Description)
+	var inferredVendor model.Vendor
+	require.NoError(t, db.First(&inferredVendor, inferred.VendorID).Error)
+	assert.Equal(t, "Moonshot AI", inferredVendor.Name)
+
 	var reloaded model.Model
 	require.NoError(t, db.First(&reloaded, pinned.Id).Error)
 	assert.Equal(t, "Pinned description", reloaded.Description)
 
-	// A second run finds nothing left to change.
+	// A manual description on the inferred record survives the next run.
+	require.NoError(t, db.Model(&model.Model{}).Where("id = ?", inferred.Id).Updates(map[string]any{"description": "Hand written"}).Error)
 	summary, err = runModelMetadataAutoSyncOnce(context.Background(), "zh")
 	require.NoError(t, err)
 	assert.Empty(t, summary.CreatedModels)
 	assert.Empty(t, summary.UpdatedModels)
+	var handwritten model.Model
+	require.NoError(t, db.First(&handwritten, inferred.Id).Error)
+	assert.Equal(t, "Hand written", handwritten.Description)
+}
+
+func TestFallbackMetadataValuesInfersVendor(t *testing.T) {
+	vendors := map[string]model.Vendor{"Volcengine Ark": {}, "Moonshot AI": {}}
+	values, ok := fallbackMetadataValues("doubao-seed-2-1-lite", vendors)
+	require.True(t, ok)
+	assert.Equal(t, "Volcengine Ark", values.Vendor)
+	assert.Equal(t, 1, values.Status)
+	values, ok = fallbackMetadataValues("Kimi-K2-8-Preview", vendors)
+	require.True(t, ok)
+	assert.Equal(t, "Moonshot AI", values.Vendor)
+	_, ok = fallbackMetadataValues("unlisted-vendor-model", vendors)
+	assert.False(t, ok)
+	// A recognized prefix whose vendor the catalog does not publish stays unresolved.
+	_, ok = fallbackMetadataValues("kimi-k2-8-preview", map[string]model.Vendor{})
+	assert.False(t, ok)
 }
 
 func TestRunModelMetadataAutoSyncRefreshesChangedCatalogValues(t *testing.T) {

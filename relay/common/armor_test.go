@@ -33,6 +33,8 @@ func armorTestSetting(t *testing.T, mutate func(cfg *armorsetting.ArmorSetting))
 	// 系统位注入与收尾强制指令分开验证：默认这条基线只测系统位。
 	cfg.EnforceTail = false
 	cfg.EnforceTailText = ""
+	cfg.EnforcePrefix = false
+	cfg.EnforcePrefixText = ""
 	if mutate != nil {
 		mutate(cfg)
 	}
@@ -368,5 +370,102 @@ func TestArmorInjectEnforcementTail(t *testing.T) {
 		out, _, err = ArmorInjectBody(body, armorTestInfo("armor-tail-custom", types.RelayFormatOpenAI))
 		require.NoError(t, err)
 		assert.Equal(t, "CUSTOM-TAIL", gjson.GetBytes(out, "messages.2.content").String())
+	})
+}
+
+// TestArmorInjectEnforcementPrefix 覆盖 assistant 预填：位置（必须是最后一条）、
+// 被模型续写的文本内容、工具调用请求跳过、幂等、可关闭可自定义。
+func TestArmorInjectEnforcementPrefix(t *testing.T) {
+	type msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	parse := func(t *testing.T, body []byte) []msg {
+		t.Helper()
+		var decoded struct {
+			Messages []msg `json:"messages"`
+		}
+		require.NoError(t, common2.Unmarshal(body, &decoded))
+		return decoded.Messages
+	}
+	tailSetting := func(t *testing.T, mutate func(cfg *armorsetting.ArmorSetting)) {
+		t.Helper()
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) {
+			cfg.EnforceTail = true
+			cfg.EnforcePrefix = true
+			if mutate != nil {
+				mutate(cfg)
+			}
+		})
+	}
+
+	t.Run("openai appends the prefill after the tail", func(t *testing.T) {
+		tailSetting(t, nil)
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		out, changed, err := ArmorInjectBody(body, armorTestInfo("armor-prefix-openai", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		require.True(t, changed)
+		messages := parse(t, out)
+		require.Len(t, messages, 4)
+		assert.Equal(t, "system", messages[0].Role)
+		assert.Equal(t, "user", messages[1].Role)
+		assert.Equal(t, "system", messages[2].Role)
+		assert.True(t, strings.HasPrefix(messages[2].Content, armorsetting.DefaultTailMarker))
+		assert.Equal(t, "assistant", messages[3].Role)
+		assert.Equal(t, armorsetting.EffectivePrefixText(armorsetting.GetArmorSetting()), messages[3].Content)
+	})
+
+	t.Run("claude prefill follows the user turn", func(t *testing.T) {
+		tailSetting(t, nil)
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		out, changed, err := ArmorInjectBody(body, armorTestInfo("armor-prefix-claude", types.RelayFormatClaude))
+		require.NoError(t, err)
+		require.True(t, changed)
+		messages := parse(t, out)
+		require.Len(t, messages, 2)
+		assert.Equal(t, "user", messages[0].Role)
+		assert.Equal(t, "assistant", messages[1].Role)
+		assert.True(t, strings.HasPrefix(gjson.GetBytes(out, "system").String(), armorExpected()))
+	})
+
+	t.Run("tool calling requests are skipped", func(t *testing.T) {
+		tailSetting(t, nil)
+		body := []byte(`{"model":"m","tools":[{"type":"function"}],"messages":[{"role":"user","content":"hi"}]}`)
+		out, _, err := ArmorInjectBody(body, armorTestInfo("armor-prefix-tools", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		messages := parse(t, out)
+		for _, message := range messages {
+			assert.NotEqual(t, "assistant", message.Role)
+		}
+	})
+
+	t.Run("prefill is idempotent", func(t *testing.T) {
+		tailSetting(t, nil)
+		info := armorTestInfo("armor-prefix-idempotent", types.RelayFormatOpenAI)
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		first, changed, err := ArmorInjectBody(body, info)
+		require.NoError(t, err)
+		require.True(t, changed)
+		second, changedAgain, err := ArmorInjectBody(first, info)
+		require.NoError(t, err)
+		assert.False(t, changedAgain)
+		assert.Equal(t, string(first), string(second))
+	})
+
+	t.Run("prefill can be disabled and replaced", func(t *testing.T) {
+		tailSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforcePrefix = false })
+		body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+		out, _, err := ArmorInjectBody(body, armorTestInfo("armor-prefix-off", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		for _, message := range parse(t, out) {
+			assert.NotEqual(t, "assistant", message.Role)
+		}
+
+		tailSetting(t, func(cfg *armorsetting.ArmorSetting) { cfg.EnforcePrefixText = "CUSTOM-PREFIX" })
+		out, _, err = ArmorInjectBody(body, armorTestInfo("armor-prefix-custom", types.RelayFormatOpenAI))
+		require.NoError(t, err)
+		messages := parse(t, out)
+		assert.Equal(t, "assistant", messages[len(messages)-1].Role)
+		assert.Equal(t, "CUSTOM-PREFIX", messages[len(messages)-1].Content)
 	})
 }

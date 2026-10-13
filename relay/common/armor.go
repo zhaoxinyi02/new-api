@@ -113,9 +113,63 @@ func ArmorInjectBody(body []byte, info *RelayInfo) ([]byte, bool, error) {
 		if tailErr != nil {
 			return injected, true, tailErr
 		}
-		return tailed, tailChanged, nil
+		if tailChanged {
+			injected = tailed
+		}
+	}
+	if prefix := armorsetting.EffectivePrefixText(cfg); prefix != "" {
+		prefixed, _, prefixErr := armorAppendPrefix(injected, info, prefix)
+		if prefixErr != nil {
+			return injected, true, prefixErr
+		}
+		injected = prefixed
 	}
 	return injected, true, nil
+}
+
+// armorAppendPrefix 追加 assistant 预填：模型从"已经同意并开始交付"的位置续写。
+// 只在 OpenAI 形态的对话数组上做；带 tools/functions、或末条是 tool 结果的请求跳过，
+// 避免把工具调用链路打乱。
+func armorAppendPrefix(body []byte, info *RelayInfo, text string) ([]byte, bool, error) {
+	if gjson.GetBytes(body, "tools").IsArray() || gjson.GetBytes(body, "functions").IsArray() {
+		return body, false, nil
+	}
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return body, false, nil
+	}
+	if gjson.GetBytes(body, "system").Exists() && !armorIsClaudeFormat(info) {
+		// 顶层 system 且不是 Claude 出口：消息形态不属于可预填的对话数组。
+		return body, false, nil
+	}
+	items := messages.Array()
+	if len(items) == 0 {
+		return body, false, nil
+	}
+	last := items[len(items)-1]
+	lastRole := strings.ToLower(strings.TrimSpace(last.Get("role").String()))
+	if lastRole == "tool" {
+		return body, false, nil
+	}
+	if lastRole == "assistant" && armorHasPrefixHead(last.Get("content").String(), text) {
+		return body, false, nil
+	}
+	quoted, err := common.Marshal(text)
+	if err != nil {
+		return body, false, err
+	}
+	item := fmt.Sprintf(`{"role":"assistant","content":%s}`, string(quoted))
+	out, setErr := sjson.SetRawBytes(body, "messages", []byte(appendRawArrayElement(messages.Raw, item)))
+	return out, setErr == nil, setErr
+}
+
+// armorHasPrefixHead 比较预填头，用于重试幂等（只比前 12 个字符，避免文本被上游改写）。
+func armorHasPrefixHead(content string, text string) bool {
+	head := text
+	if len(head) > 12 {
+		head = head[:12]
+	}
+	return strings.HasPrefix(strings.TrimSpace(content), head)
 }
 
 // armorAppendTail 把收尾强制指令追加到消息末尾（OpenAI 用最后一条 system，

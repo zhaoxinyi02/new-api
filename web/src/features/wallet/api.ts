@@ -39,6 +39,7 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  OfflinePaymentResponse,
 } from './types'
 
 // ============================================================================
@@ -119,6 +120,20 @@ export async function requestPayment(
     ...res.data,
     url: res.data.url || (res as unknown as { url?: string }).url,
   }
+}
+
+/**
+ * Request an offline (corporate bank transfer) top-up order. No gateway is
+ * contacted; the returned trade number identifies the pending order that an
+ * administrator later completes once the transfer is received.
+ */
+export async function requestOfflinePayment(
+  request: PaymentRequest
+): Promise<OfflinePaymentResponse> {
+  const res = await api.post('/api/user/offline/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
 }
 
 /**

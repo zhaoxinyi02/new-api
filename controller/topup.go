@@ -6,7 +6,9 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -98,7 +100,7 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled(),
+		"enable_online_topup":              isEpayTopUpEnabled() || offlinePayMethodEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
@@ -360,6 +362,106 @@ func RequestEpay(c *gin.Context) {
 	}
 	logger.LogInfo(c.Request.Context(), common.LogText("Epay top-up order created user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, uri, common.GetJsonString(params)))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
+}
+
+const offlinePayInfoEnv = "OFFLINE_PAY_INFO"
+
+// offlinePayMethodEnabled reports whether the operator has enabled the offline
+// (corporate bank transfer) payment method. The method itself is declared in the
+// regular PayMethods setting; the收款信息 comes from the OFFLINE_PAY_INFO
+// environment variable so the visual payment-method editor cannot clobber it.
+func offlinePayMethodEnabled() bool {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		return false
+	}
+	return operation_setting.ContainsPayMethod(model.PaymentMethodOffline)
+}
+
+func getOfflinePayInfo() map[string]string {
+	raw := strings.TrimSpace(os.Getenv(offlinePayInfoEnv))
+	info := map[string]string{}
+	if raw == "" {
+		return info
+	}
+	if err := common.UnmarshalJsonStr(raw, &info); err != nil {
+		return map[string]string{"text": raw}
+	}
+	return info
+}
+
+type OfflinePayRequest struct {
+	Amount int64 `json:"amount"`
+}
+
+// RequestOfflinePay creates a pending top-up order for an offline corporate
+// bank transfer. No gateway is contacted; an administrator later confirms the
+// received transfer via AdminCompleteTopUp, which credits the quota.
+func RequestOfflinePay(c *gin.Context) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		paymentError(c, common.NewMessage("Payment, redemption, subscription, and invitation reward features are disabled. The administrator must confirm compliance terms before enabling them."))
+		return
+	}
+	var req OfflinePayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		paymentError(c, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if !offlinePayMethodEnabled() {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
+	if req.Amount < getMinTopup() {
+		paymentError(c, common.NewMessage("Top-up amount cannot be less than {{min}}", map[string]any{"min": getMinTopup()}))
+		return
+	}
+	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
+	group, err := model.GetUserGroup(id, true)
+	if err != nil {
+		paymentError(c, common.NewMessage("Failed to get the user group"))
+		return
+	}
+	payMoney := getPayMoney(req.Amount, group)
+	if payMoney < 0.01 {
+		paymentError(c, common.NewMessage("Payment amount is too low"))
+		return
+	}
+
+	tradeNo := fmt.Sprintf("OFF%dNO%d%s", id, time.Now().Unix(), common.GetRandomString(6))
+
+	amount := req.Amount
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		dAmount := decimal.NewFromInt(int64(amount))
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		amount = dAmount.Div(dQuotaPerUnit).IntPart()
+	}
+	topUp := &model.TopUp{
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   model.PaymentMethodOffline,
+		PaymentProvider: model.PaymentProviderOffline,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	if err := topUp.Insert(); err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("Offline pay failed to create top-up order user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))
+		paymentError(c, common.NewMessage("Failed to create order"))
+		return
+	}
+	logger.LogInfo(c.Request.Context(), common.LogText("Offline top-up order created user_id=%d trade_no=%s amount=%d money=%.2f", id, tradeNo, req.Amount, payMoney))
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data": gin.H{
+			"trade_no": tradeNo,
+			"amount":   amount,
+			"money":    strconv.FormatFloat(payMoney, 'f', 2, 64),
+			"pay_info": getOfflinePayInfo(),
+		},
+	})
 }
 
 // tradeNo lock

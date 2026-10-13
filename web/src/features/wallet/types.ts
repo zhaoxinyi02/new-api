@@ -45,6 +45,13 @@ export type CreemPaymentResponse = ApiResponse<{ checkout_url: string }>
 export type WaffoPaymentResponse = ApiResponse<
   { payment_url?: string } | string
 >
+export type OfflineOrder = {
+  trade_no: string
+  amount: number
+  money: string
+  pay_info: Record<string, string>
+}
+export type OfflinePaymentResponse = ApiResponse<OfflineOrder>
 export type WaffoPancakePaymentResponse = ApiResponse<
   | {
       checkout_url?: string

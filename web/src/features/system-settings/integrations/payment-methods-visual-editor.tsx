@@ -48,6 +48,7 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
+  offline: 'LuCreditCard',
 }
 
 function getDefaultIconName(type: string) {
@@ -95,6 +96,14 @@ export function PaymentMethodsVisualEditor({
         icon: getDefaultIconName('waffo_pancake'),
         name: 'Waffo Pancake',
         type: 'waffo_pancake',
+      },
+    },
+    {
+      name: t('Corporate bank transfer'),
+      template: {
+        icon: getDefaultIconName('offline'),
+        name: '对公转账',
+        type: 'offline',
       },
     },
     {

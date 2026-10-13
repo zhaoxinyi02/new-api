@@ -23,10 +23,13 @@ import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
 
+import { isApiSuccess, requestOfflinePayment } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
+import { OfflinePayDialog } from './components/dialogs/offline-pay-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
@@ -53,6 +56,7 @@ import type {
   PresetAmount,
   CreemProduct,
   WaffoPayMethod,
+  OfflineOrder,
 } from './types'
 
 interface WalletProps {
@@ -72,6 +76,8 @@ export function Wallet(props: WalletProps) {
   >(null)
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [offlineOrder, setOfflineOrder] = useState<OfflineOrder | null>(null)
+  const [offlineDialogOpen, setOfflineDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
@@ -193,6 +199,28 @@ export function Wallet(props: WalletProps) {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
+
+    if (selectedPaymentMethod.type === PAYMENT_TYPES.OFFLINE) {
+      setPaymentLoading(selectedPaymentMethod.type)
+      try {
+        const response = await requestOfflinePayment({
+          amount: Math.floor(topupAmount),
+          payment_method: selectedPaymentMethod.type,
+        })
+        if (!isApiSuccess(response) || !response.data) {
+          handleServerError(response, t('Payment request failed'))
+          return
+        }
+        setOfflineOrder(response.data)
+        setConfirmDialogOpen(false)
+        setOfflineDialogOpen(true)
+      } catch (error) {
+        handleServerError(error, t('Payment request failed'))
+      } finally {
+        setPaymentLoading(null)
+      }
+      return
+    }
 
     const success = await dispatchSelectedPayment(
       selectedPaymentMethod,
@@ -363,6 +391,12 @@ export function Wallet(props: WalletProps) {
         processing={processing || waffoProcessing || pancakeProcessing}
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
+      />
+
+      <OfflinePayDialog
+        open={offlineDialogOpen}
+        onOpenChange={setOfflineDialogOpen}
+        order={offlineOrder}
       />
 
       <TransferDialog

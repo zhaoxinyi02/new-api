@@ -27,10 +27,16 @@ func ClassifyRelayOutcome(ctx context.Context, info *relaycommon.RelayInfo, apiE
 		return OutcomeIgnored
 	}
 	stream := info.StreamStatus.OutcomeSnapshot()
-	completedNormally := info.IsStream && info.StreamStatus != nil && apiErr == nil &&
+	// A non-stream relay keeps no stream status at all: reaching the request
+	// boundary without an error means the response was produced and written, so
+	// a request context canceled while the client read the body must not drop
+	// the sample.
+	nonStreamCompleted := !info.IsStream && info.StreamStatus == nil && apiErr == nil
+	streamCompleted := info.IsStream && info.StreamStatus != nil && apiErr == nil &&
 		stream.Response == relaycommon.ResponseOutcomeCompleted &&
 		(stream.EndReason == relaycommon.StreamEndReasonEOF || stream.EndReason == relaycommon.StreamEndReasonDone) &&
 		!stream.HasErrors && info.StreamStatus.EndError == nil
+	completedNormally := streamCompleted || nonStreamCompleted
 	if ctx != nil && ctx.Err() == context.Canceled && !completedNormally {
 		return OutcomeIgnored
 	}

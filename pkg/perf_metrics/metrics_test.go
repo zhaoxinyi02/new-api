@@ -40,6 +40,9 @@ func TestClassifyRelayOutcome(t *testing.T) {
 		{"empty upstream response", context.Background(), types.NewError(errors.New("empty"), types.ErrorCodeEmptyResponse), OutcomeFailure},
 		{"network failure", context.Background(), types.NewOpenAIError(errors.New("connection refused"), types.ErrorCodeDoRequestFailed, 500), OutcomeFailure},
 		{"client cancellation", canceled, types.NewOpenAIError(errors.New("context canceled"), types.ErrorCodeDoRequestFailed, 500), OutcomeIgnored},
+		// A finished non-stream relay keeps sampling when the client closes the
+		// connection after the response was written.
+		{"non-stream completed before the client closed", canceled, nil, OutcomeSuccess},
 		{"upstream deadline", context.Background(), types.NewOpenAIError(context.DeadlineExceeded, types.ErrorCodeDoRequestFailed, 504), OutcomeFailure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

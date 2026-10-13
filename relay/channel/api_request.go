@@ -531,6 +531,13 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	// transparent stream retries.
 	relayClient := *client
 	relayClient.CheckRedirect = keepUpstreamRedirectResponse
+
+	// 破甲注入收口：发给上游的 JSON 请求体在这里统一塞进破甲系统提示词，
+	// 所以 OpenAI / Claude / Gemini / Responses / 直通 全格式一次覆盖。
+	// 注入失败按原样继续，不影响中转本身；开关见 setting/armor_setting。
+	if _, armorErr := common.ArmorInjectOutboundRequest(c, req, info); armorErr != nil {
+		logger.LogError(c, common2.LogText("armor inject failed: %s", armorErr.Error()))
+	}
 	if common2.DebugEnabled && req != nil && req.URL != nil {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c, "http transport select: host=%s protocol=%s shards=%d policy=%s",

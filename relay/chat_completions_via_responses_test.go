@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	armorsetting "github.com/QuantumNous/new-api/setting/armor_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +29,12 @@ func TestPrepareResponsesRequestRetainsConvertedAdaptor(t *testing.T) {
 		body []byte
 	}
 	captured := make(chan capturedRequest, 1)
+	// 本用例断言的是协议转换结果（上游收到的 messages 形态）。破甲注入是出口层行为，
+	// 默认开启会额外插入一条 system 消息，所以在用例作用域内关掉它。
+	armor := armorsetting.GetArmorSetting()
+	armorSaved := armor.Enabled
+	armor.Enabled = false
+	t.Cleanup(func() { armor.Enabled = armorSaved })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {

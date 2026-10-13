@@ -117,8 +117,10 @@ func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[st
 				monitor.Uptime = uptime
 			}
 
+			// The status page API returns each monitor's heartbeats oldest-first,
+			// so the last entry carries the monitor's current state.
 			if heartbeats, exists := heartbeatData.HeartbeatList[monitorID]; exists && len(heartbeats) > 0 {
-				monitor.Status = heartbeats[0].Status
+				monitor.Status = heartbeats[len(heartbeats)-1].Status
 			}
 
 			result.Monitors = append(result.Monitors, monitor)

@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { OfflineOrder } from '@/features/wallet/types'
+
 // ============================================================================
 // Subscription Plan Schema & Types
 // ============================================================================
@@ -93,6 +95,19 @@ export interface SubscriptionPayRequest {
   plan_id: number
   payment_method?: string
 }
+
+/**
+ * Offline plan purchase: the payer scans the QR code or transfers to the
+ * corporate account, and the administrator confirms the payment in the billing
+ * history. The money buys the plan directly and never becomes wallet balance.
+ */
+export interface OfflineSubscriptionPayRequest {
+  plan_id: number
+  /** offline_qr (scan to pay) or offline (corporate bank transfer) */
+  payment_method: string
+}
+
+export type OfflineSubscriptionPayResponse = ApiResponse<OfflineOrder>
 
 export interface SubscriptionPayResponse {
   success: boolean

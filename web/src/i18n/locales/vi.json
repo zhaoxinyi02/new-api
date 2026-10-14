@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}} ({{points}} điểm)",
     "Plan information": "Thông tin gói",
     "Plan purchase": "Mua gói",
-    "Quota used": "Hạn mức đã dùng"
+    "Quota used": "Hạn mức đã dùng",
+    "Plans": "Gói",
+    "Pay directly": "Thanh toán trực tiếp",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "Thanh toán trực tiếp giá gói; gói sẽ kích hoạt sau khi quản trị viên xác nhận thanh toán.",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "Gói được mua bằng thanh toán trực tiếp (mã QR hoặc chuyển khoản) và kích hoạt sau khi quản trị viên xác nhận. Muốn nạp số dư, hãy dùng ví.",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "Thanh toán đúng số tiền bên dưới; quản trị viên sẽ kiểm tra và kích hoạt gói của bạn.",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "Chuyển khoản tới tài khoản bên dưới và ghi số đơn hàng vào phần ghi chú; gói sẽ kích hoạt sau khi kiểm tra.",
+    "Subscription plan does not exist": "Gói không tồn tại",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "Đơn gói này được thanh toán qua cổng thanh toán nên không thể duyệt thủ công",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "Đơn gói này được thanh toán qua cổng thanh toán nên không thể từ chối thủ công"
   }
 }

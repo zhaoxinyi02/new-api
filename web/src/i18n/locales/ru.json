@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}} ({{points}} баллов)",
     "Plan information": "Информация о тарифе",
     "Plan purchase": "Покупка тарифа",
-    "Quota used": "Использованная квота"
+    "Quota used": "Использованная квота",
+    "Plans": "Тарифы",
+    "Pay directly": "Оплатить напрямую",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "Оплатите стоимость тарифа напрямую; тариф активируется после подтверждения платежа администратором.",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "Тарифы покупаются прямой оплатой (QR-код или банковский перевод) и активируются после подтверждения администратором. Для пополнения баланса используйте кошелёк.",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "Оплатите точную сумму ниже; после проверки заказа администратором тариф будет активирован.",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "Переведите сумму на указанный счёт и укажите номер заказа в комментарии; после проверки тариф активируется.",
+    "Subscription plan does not exist": "Тариф не существует",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "Этот заказ тарифа обрабатывается платёжным провайдером и не может быть подтверждён вручную",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "Этот заказ тарифа обрабатывается платёжным провайдером и не может быть отклонён вручную"
   }
 }

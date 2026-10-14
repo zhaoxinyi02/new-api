@@ -35,6 +35,7 @@ const (
 
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
+	ErrSubscriptionPlanNotFound       = errors.New("subscription plan not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
 )
 
@@ -708,6 +709,56 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		order.CompleteTime = common.GetTimestamp()
 		return tx.Save(&order).Error
 	})
+}
+
+// CreatePendingOfflineSubscriptionOrder records an unpaid plan purchase and
+// mirrors it into the top-up table.
+//
+// The mirror row is what puts the purchase into the existing administrator
+// review list (账单记录). It deliberately credits no wallet balance (amount stays
+// 0); approving the order activates the subscription instead of adding quota.
+func CreatePendingOfflineSubscriptionOrder(userId int, plan *SubscriptionPlan, paymentMethod string) (*SubscriptionOrder, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	if plan == nil || plan.Id == 0 {
+		return nil, errors.New("invalid plan")
+	}
+	if !plan.Enabled {
+		return nil, ErrSubscriptionPlanNotFound
+	}
+	now := common.GetTimestamp()
+	order := &SubscriptionOrder{
+		UserId:          userId,
+		PlanId:          plan.Id,
+		Money:           plan.PriceAmount,
+		TradeNo:         fmt.Sprintf("SUB%dNO%d%s", userId, now, common.GetRandomString(6)),
+		PaymentMethod:   paymentMethod,
+		PaymentProvider: PaymentProviderOffline,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      now,
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(order).Error; err != nil {
+			return err
+		}
+		mirror := TopUp{
+			UserId:          userId,
+			Amount:          0,
+			Money:           plan.PriceAmount,
+			TradeNo:         order.TradeNo,
+			PaymentMethod:   paymentMethod,
+			PaymentProvider: PaymentProviderOffline,
+			CreateTime:      now,
+			Status:          common.TopUpStatusPending,
+			Note:            fmt.Sprintf("%s: %s", common.LogText("Subscription plan"), plan.Title),
+		}
+		return tx.Create(&mirror).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.

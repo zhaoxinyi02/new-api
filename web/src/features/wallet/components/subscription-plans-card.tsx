@@ -56,26 +56,22 @@ import type {
   PlanRecord,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { getEpayMethods, getOfflinePayMethods } from '../lib'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
-import type { PaymentMethod, TopupInfo } from '../types'
+import type { TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
-  onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
-function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
-  return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
-  )
-}
+
 
 function getBillingPreferenceLabel(
   preference: string,
@@ -97,7 +93,6 @@ function getBillingPreferenceLabel(
 
 export function SubscriptionPlansCard({
   topupInfo,
-  onAvailabilityChange,
   userQuota,
   onPurchaseSuccess,
 }: SubscriptionPlansCardProps) {
@@ -124,6 +119,10 @@ export function SubscriptionPlansCard({
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
   const epayMethods = useMemo(
     () => getEpayMethods(topupInfo?.pay_methods),
+    [topupInfo?.pay_methods]
+  )
+  const offlineMethods = useMemo(
+    () => getOfflinePayMethods(topupInfo?.pay_methods),
     [topupInfo?.pay_methods]
   )
 
@@ -193,7 +192,6 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -208,10 +206,6 @@ export function SubscriptionPlansCard({
     }
     return map
   }, [allSubscriptions])
-
-  useEffect(() => {
-    onAvailabilityChange?.(isAvailable)
-  }, [isAvailable, onAvailabilityChange])
 
   const planTitleMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -651,6 +645,7 @@ export function SubscriptionPlansCard({
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
+        offlineMethods={offlineMethods}
         userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={

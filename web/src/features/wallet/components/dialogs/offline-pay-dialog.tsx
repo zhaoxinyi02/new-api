@@ -37,12 +37,39 @@ interface OfflinePayDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   order: OfflineOrder | null
+  /**
+   * What the payment buys. A top-up credits the wallet balance; a plan purchase
+   * activates a subscription. It only changes the wording shown to the payer.
+   */
+  purpose?: 'topup' | 'subscription'
 }
 
 // Known bank fields rendered in a stable order; unknown keys are appended so
 // operators can add extra收款信息 through OFFLINE_PAY_INFO without a code change.
 const FIELD_ORDER = ['holder', 'bank', 'branch', 'account']
 const QR_IMAGE_KEY = 'qr_image'
+
+// 付款后会发生什么只影响文案：充值加余额，买套餐开通订阅。
+function describePayment(
+  isQrPayment: boolean,
+  purpose: 'topup' | 'subscription',
+  t: (k: string) => string
+): string {
+  if (purpose === 'subscription') {
+    return isQrPayment
+      ? t(
+          'Pay the exact amount below, then wait for an administrator to review the order and activate your plan.'
+        )
+      : t(
+          'Transfer to the account below and put the order number in the remark; the plan activates after review.'
+        )
+  }
+  return isQrPayment
+    ? t(
+        'Pay the exact amount below, then wait for an administrator to review the order and credit your balance.'
+      )
+    : t('Transfer to the account below and put the order number in the remark.')
+}
 
 function fieldLabel(key: string, t: (k: string) => string): string {
   switch (key) {
@@ -63,6 +90,7 @@ export function OfflinePayDialog({
   open,
   onOpenChange,
   order,
+  purpose = 'topup',
 }: OfflinePayDialogProps) {
   const { t } = useTranslation()
   const info = order?.pay_info ?? {}
@@ -117,15 +145,7 @@ export function OfflinePayDialog({
       title={
         isQrPayment ? t('Scan to pay') : t('Corporate bank transfer')
       }
-      description={
-        isQrPayment
-          ? t(
-              'Pay the exact amount below, then wait for an administrator to review the order and credit your balance.'
-            )
-          : t(
-              'Transfer to the account below and put the order number in the remark.'
-            )
-      }
+      description={describePayment(isQrPayment, purpose, t)}
       contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'
       titleClassName='text-xl font-semibold'
       contentHeight='auto'

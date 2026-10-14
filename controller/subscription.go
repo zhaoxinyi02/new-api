@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -24,6 +26,72 @@ type BillingPreferenceRequest struct {
 
 type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
+}
+
+type OfflineSubscriptionPayRequest struct {
+	PlanId        int    `json:"plan_id"`
+	PaymentMethod string `json:"payment_method"`
+}
+
+// RequestOfflineSubscriptionPay creates a pending plan purchase that settles
+// through the same offline review flow as a wallet top-up: the payer scans the
+// QR code or transfers to the corporate account, and an administrator approves
+// the order in账单记录. Approving activates the subscription instead of
+// crediting the wallet, so the money never becomes spendable balance.
+func RequestOfflineSubscriptionPay(c *gin.Context) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		paymentError(c, common.NewMessage("Payment, redemption, subscription, and invitation reward features are disabled. The administrator must confirm compliance terms before enabling them."))
+		return
+	}
+	var req OfflineSubscriptionPayRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+		paymentError(c, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if !offlinePayMethodEnabled() {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
+	method, ok := normalizeOfflinePayMethod(req.PaymentMethod)
+	if !ok || !operation_setting.ContainsPayMethod(method) {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
+	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	if err != nil || plan == nil {
+		paymentError(c, common.NewMessage("Subscription plan does not exist"))
+		return
+	}
+	plan.NormalizeDefaults()
+	if !plan.Enabled {
+		paymentError(c, common.NewMessage("Subscription plan does not exist"))
+		return
+	}
+	if plan.PriceAmount < 0.01 {
+		paymentError(c, common.NewMessage("Payment amount is too low"))
+		return
+	}
+
+	userId := c.GetInt("id")
+	order, err := model.CreatePendingOfflineSubscriptionOrder(userId, plan, method)
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("Offline subscription order failed to create user_id=%d plan_id=%d method=%s error=%q", userId, plan.Id, method, err.Error()))
+		paymentError(c, common.NewMessage("Failed to create order"))
+		return
+	}
+	logger.LogInfo(c.Request.Context(), common.LogText("Offline subscription order created user_id=%d trade_no=%s plan_id=%d method=%s money=%.2f", userId, order.TradeNo, plan.Id, method, order.Money))
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data": gin.H{
+			"trade_no":       order.TradeNo,
+			"plan_id":        plan.Id,
+			"plan_title":     plan.Title,
+			"money":          strconv.FormatFloat(order.Money, 'f', 2, 64),
+			"payment_method": method,
+			"pay_info":       offlinePayInfo(method),
+		},
+	})
 }
 
 // ---- User APIs ----

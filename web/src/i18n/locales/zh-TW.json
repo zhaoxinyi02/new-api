@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}}（{{points}} 點數）",
     "Plan information": "套餐資訊",
     "Plan purchase": "套餐購買",
-    "Quota used": "已用額度"
+    "Quota used": "已用額度",
+    "Plans": "套餐",
+    "Pay directly": "直接付款",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "直接支付套餐費用，管理員確認收款後套餐即生效。",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "套餐是直接付款購買：掃碼或對公轉帳，管理員確認收款後套餐生效。需要儲值餘額請到錢包頁面。",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "按下方金額付款，管理員確認訂單後將為你的帳號開通套餐。",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "向下方帳戶轉帳，並在備註中填寫訂單號，管理員確認後套餐生效。",
+    "Subscription plan does not exist": "套餐不存在",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "此套餐訂單由支付渠道結算，無法手動通過",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "此套餐訂單由支付渠道結算，無法手動拒絕"
   }
 }

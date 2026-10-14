@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}}（{{points}} ポイント）",
     "Plan information": "プラン情報",
     "Plan purchase": "プランの購入",
-    "Quota used": "使用済みクォータ"
+    "Quota used": "使用済みクォータ",
+    "Plans": "プラン",
+    "Pay directly": "直接支払う",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "プラン料金を直接お支払いください。管理者が入金を確認するとプランが有効になります。",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "プランは直接支払いで購入します（QR コードまたは銀行振込）。管理者が入金を確認すると有効になります。残高のチャージはウォレットから行ってください。",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "下記の金額をお支払いください。管理者が注文を確認するとプランが有効になります。",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "下記口座へ振り込み、備考に注文番号を記入してください。確認後にプランが有効になります。",
+    "Subscription plan does not exist": "プランが存在しません",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "このプラン注文は決済プロバイダーで処理されるため、手動で承認できません",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "このプラン注文は決済プロバイダーで処理されるため、手動で拒否できません"
   }
 }

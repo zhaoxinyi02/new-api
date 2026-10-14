@@ -21,6 +21,8 @@ import { describe, expect, test } from 'vitest'
 import { PAYMENT_TYPES } from '../constants'
 import {
   dispatchSelectedPayment,
+  getEpayMethods,
+  getOfflinePayMethods,
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
@@ -81,5 +83,33 @@ describe('payment dispatch', () => {
 
     expect(success).toBe(false)
     expect(called).toBe(false)
+  })
+})
+
+describe('pay-method split for plans and top-ups', () => {
+  const methods = [
+    { name: '扫码付款', type: PAYMENT_TYPES.OFFLINE_QR },
+    { name: '对公转账', type: PAYMENT_TYPES.OFFLINE },
+    { name: '支付宝', type: PAYMENT_TYPES.ALIPAY },
+    { name: 'Stripe', type: PAYMENT_TYPES.STRIPE },
+    { name: 'Creem', type: PAYMENT_TYPES.CREEM },
+  ]
+
+  test('keeps the offline methods out of the online gateway list', () => {
+    expect(getEpayMethods(methods).map((m) => m.type)).toEqual([
+      PAYMENT_TYPES.ALIPAY,
+    ])
+  })
+
+  test('offers 扫码付款 before 对公转账 regardless of the configured order', () => {
+    expect(getOfflinePayMethods(methods).map((m) => m.type)).toEqual([
+      PAYMENT_TYPES.OFFLINE_QR,
+      PAYMENT_TYPES.OFFLINE,
+    ])
+  })
+
+  test('returns empty lists when no payment method is configured', () => {
+    expect(getEpayMethods()).toEqual([])
+    expect(getOfflinePayMethods()).toEqual([])
   })
 })

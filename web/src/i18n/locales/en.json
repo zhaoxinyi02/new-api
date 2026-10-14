@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)",
     "Plan information": "Plan information",
     "Plan purchase": "Plan purchase",
-    "Quota used": "Quota used"
+    "Quota used": "Quota used",
+    "Plans": "Plans",
+    "Pay directly": "Pay directly",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "Pay the plan price directly; the plan starts after the administrator confirms your payment.",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "Transfer to the account below and put the order number in the remark; the plan activates after review.",
+    "Subscription plan does not exist": "Subscription plan does not exist",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "This subscription order is settled by its payment provider and cannot be completed manually",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "This subscription order is settled by its payment provider and cannot be rejected manually"
   }
 }

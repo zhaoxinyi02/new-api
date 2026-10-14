@@ -812,6 +812,21 @@ func AdminCompleteTopUp(c *gin.Context) {
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
+	// 线下套餐购买也走同一条审核队列（充值单是镜像行），通过它是「开通套餐」，
+	// 不是「加余额」：金额不进钱包，只创建订阅。
+	if subOrder := model.GetSubscriptionOrderByTradeNo(req.TradeNo); subOrder != nil {
+		if subOrder.PaymentProvider != model.PaymentProviderOffline {
+			common.ApiErrorMsg(c, "This subscription order is settled by its payment provider and cannot be completed manually")
+			return
+		}
+		if err := model.CompleteSubscriptionOrder(req.TradeNo, "", model.PaymentProviderOffline, subOrder.PaymentMethod); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, nil)
+		return
+	}
+
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return
@@ -829,6 +844,23 @@ func AdminRejectTopUp(c *gin.Context) {
 
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
+
+	// 线下套餐订单被拒：作废订阅订单（不会创建订阅），镜像充值单同样置为失败。
+	if subOrder := model.GetSubscriptionOrderByTradeNo(req.TradeNo); subOrder != nil {
+		if subOrder.PaymentProvider != model.PaymentProviderOffline {
+			common.ApiErrorMsg(c, "This subscription order is settled by its payment provider and cannot be rejected manually")
+			return
+		}
+		if err := model.ExpireSubscriptionOrder(req.TradeNo, model.PaymentProviderOffline); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.ManualRejectTopUp(req.TradeNo, c.ClientIP()); err != nil {
+			logger.LogError(c.Request.Context(), common.LogText("Failed to mark the mirrored top-up of subscription order %s as rejected: %q", req.TradeNo, err.Error()))
+		}
+		common.ApiSuccess(c, nil)
+		return
+	}
 
 	if err := model.ManualRejectTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)

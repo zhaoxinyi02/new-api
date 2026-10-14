@@ -30,6 +30,8 @@ import type {
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
+  OfflineSubscriptionPayRequest,
+  OfflineSubscriptionPayResponse,
 } from './types'
 
 // ============================================================================
@@ -152,6 +154,20 @@ export async function paySubscriptionWaffoPancake(
   data: SubscriptionPayRequest
 ): Promise<SubscriptionPayResponse> {
   const res = await api.post('/api/subscription/waffo-pancake/pay', data)
+  return res.data
+}
+
+/**
+ * Create a pending plan purchase paid directly by 扫码付款 or 对公转账. The plan
+ * activates when an administrator confirms the payment; no wallet balance is
+ * involved, so the buyer cannot end up with both the credit and the plan.
+ */
+export async function paySubscriptionOffline(
+  data: OfflineSubscriptionPayRequest
+): Promise<OfflineSubscriptionPayResponse> {
+  const res = await api.post('/api/subscription/offline/pay', data, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
   return res.data
 }
 

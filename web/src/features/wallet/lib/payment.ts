@@ -138,6 +138,48 @@ export async function dispatchSelectedPayment(
 }
 
 /**
+ * Payment methods that must not be sent to the online (epay) gateway: the
+ * gateway integrations and the two offline methods, which are settled by an
+ * administrator instead.
+ */
+const NON_EPAY_METHOD_TYPES = new Set<string>([
+  PAYMENT_TYPES.STRIPE,
+  PAYMENT_TYPES.CREEM,
+  PAYMENT_TYPES.OFFLINE,
+  PAYMENT_TYPES.OFFLINE_QR,
+])
+
+/**
+ * Pick the methods that go through the online payment gateway.
+ */
+export function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
+  return payMethods.filter(
+    (method) =>
+      method?.type && !NON_EPAY_METHOD_TYPES.has(method.type)
+  )
+}
+
+/**
+ * Pick the offline methods used to buy a plan directly, 扫码付款 (offline_qr)
+ * first and 对公转账 (offline) second.
+ */
+export function getOfflinePayMethods(
+  payMethods: PaymentMethod[] = []
+): PaymentMethod[] {
+  const offlineMethods = payMethods.filter(
+    (method) =>
+      method?.type === PAYMENT_TYPES.OFFLINE_QR ||
+      method?.type === PAYMENT_TYPES.OFFLINE
+  )
+  return [
+    ...offlineMethods.filter(
+      (method) => method.type === PAYMENT_TYPES.OFFLINE_QR
+    ),
+    ...offlineMethods.filter((method) => method.type === PAYMENT_TYPES.OFFLINE),
+  ]
+}
+
+/**
  * Get default payment type from topup info
  */
 export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {

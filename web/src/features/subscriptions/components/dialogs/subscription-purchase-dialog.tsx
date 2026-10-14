@@ -27,6 +27,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Separator } from '@/components/ui/separator'
+import { OfflinePayDialog } from '@/features/wallet/components/dialogs/offline-pay-dialog'
+import { PAYMENT_TYPES } from '@/features/wallet/constants'
+import type { OfflineOrder } from '@/features/wallet/types'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
@@ -39,6 +42,7 @@ import {
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
+  paySubscriptionOffline,
 } from '../../api'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
@@ -57,6 +61,12 @@ interface Props {
   enableWaffoPancake?: boolean
   enableOnlineTopUp?: boolean
   epayMethods?: PaymentMethod[]
+  /**
+   * Offline methods that pay the plan directly: 扫码付款 (offline_qr) and
+   * 对公转账 (offline). They create a pending order the administrator confirms,
+   * so the money never passes through the wallet balance.
+   */
+  offlineMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
   userQuota?: number
@@ -68,6 +78,8 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
+  const [offlineOrder, setOfflineOrder] = useState<OfflineOrder | null>(null)
+  const [offlineOpen, setOfflineOpen] = useState(false)
 
   useEffect(() => {
     if (props.open && props.epayMethods && props.epayMethods.length > 0) {
@@ -87,6 +99,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
   const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
+  const offlineMethods = props.offlineMethods ?? []
   const totalAmount = Number(plan.total_amount || 0)
   const price = formatLocalCurrencyAmount(Number(plan.price_amount || 0))
   const quotaPerUnit =
@@ -203,6 +216,27 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
+  // 线下直接付款：先创建待审核订单，再把收款信息交给付款人。
+  const handlePayOffline = async (method: string) => {
+    setPaying(true)
+    try {
+      const res = await paySubscriptionOffline({
+        plan_id: plan.id,
+        payment_method: method,
+      })
+      if (res.success && res.data) {
+        setOfflineOrder(res.data)
+        setOfflineOpen(true)
+      } else {
+        handleServerError(res, t('Failed to create order'))
+      }
+    } catch (error) {
+      handleServerError(error, t('Failed to create order'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
   const handlePayBalance = async () => {
     if (!allowBalancePay) {
       toast.error(t('This plan does not allow balance redemption'))
@@ -300,6 +334,31 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </Alert>
         )}
 
+        {offlineMethods.length > 0 && (
+          <div className='flex flex-col gap-2 rounded-md border p-3'>
+            <p className='text-xs font-medium'>{t('Pay directly')}</p>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Pay the plan price directly; the plan starts after the administrator confirms your payment.'
+              )}
+            </p>
+            <div className='grid grid-cols-2 gap-2'>
+              {offlineMethods.map((method) => (
+                <Button
+                  key={method.type}
+                  variant='outline'
+                  onClick={() => handlePayOffline(method.type)}
+                  disabled={paying || limitReached}
+                >
+                  {method.type === PAYMENT_TYPES.OFFLINE_QR
+                    ? t('Scan to pay')
+                    : t('Corporate bank transfer')}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className='flex flex-col gap-2 rounded-md border p-3'>
           <div className='flex items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground'>{t('Required')}</span>
@@ -395,6 +454,19 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
         )}
       </div>
+
+      <OfflinePayDialog
+        open={offlineOpen}
+        onOpenChange={(open) => {
+          setOfflineOpen(open)
+          if (!open) {
+            setOfflineOrder(null)
+            props.onPurchaseSuccess?.()
+          }
+        }}
+        order={offlineOrder}
+        purpose='subscription'
+      />
     </Dialog>
   )
 }

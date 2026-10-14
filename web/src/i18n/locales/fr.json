@@ -7341,6 +7341,15 @@
     "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)",
     "Plan information": "Informations sur le forfait",
     "Plan purchase": "Achat d'un forfait",
-    "Quota used": "Quota utilisé"
+    "Quota used": "Quota utilisé",
+    "Plans": "Forfaits",
+    "Pay directly": "Payer directement",
+    "Pay the plan price directly; the plan starts after the administrator confirms your payment.": "Payez directement le prix du forfait ; il démarre dès que l’administrateur confirme le paiement.",
+    "Buy a plan and pay directly by QR code or bank transfer; the plan starts once the administrator confirms your payment. To top up your balance, use the wallet.": "Les forfaits s’achètent par paiement direct (QR code ou virement bancaire) et démarrent après confirmation de l’administrateur. Pour recharger votre solde, utilisez le portefeuille.",
+    "Pay the exact amount below, then wait for an administrator to review the order and activate your plan.": "Payez le montant exact ci-dessous ; l’administrateur vérifie la commande puis active votre forfait.",
+    "Transfer to the account below and put the order number in the remark; the plan activates after review.": "Virez au compte ci-dessous en indiquant le numéro de commande ; le forfait s’active après vérification.",
+    "Subscription plan does not exist": "Le forfait n’existe pas",
+    "This subscription order is settled by its payment provider and cannot be completed manually": "Cette commande de forfait est réglée par son prestataire de paiement et ne peut pas être validée manuellement",
+    "This subscription order is settled by its payment provider and cannot be rejected manually": "Cette commande de forfait est réglée par son prestataire de paiement et ne peut pas être refusée manuellement"
   }
 }

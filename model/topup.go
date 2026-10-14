@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -23,6 +24,9 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+	// Note is the payer-submitted payment reference on offline orders (bank
+	// slip number, payer name, or a short remark) used during manual review.
+	Note string `json:"note" gorm:"type:varchar(300)"`
 }
 
 const (
@@ -336,7 +340,9 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo) (topups []*TopUp, tota
 }
 
 // GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）
-func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+// GetAllTopUps 获取全平台的充值记录（管理员使用，不限制时间窗口）。
+// status 非空时只返回该状态的订单，供后台审核「待支付」订单使用。
+func GetAllTopUps(pageInfo *common.PageInfo, status string) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -347,12 +353,16 @@ func GetAllTopUps(pageInfo *common.PageInfo) (topups []*TopUp, total int64, err 
 		}
 	}()
 
-	if err = tx.Model(&TopUp{}).Count(&total).Error; err != nil {
+	query := tx.Model(&TopUp{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if err = query.Count(&total).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
-	if err = tx.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -408,8 +418,9 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo) (to
 	return topups, total, nil
 }
 
-// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）
-func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp, total int64, err error) {
+// SearchAllTopUps 按订单号搜索全平台充值记录（管理员使用，不限制时间窗口）。
+// status 非空时附加状态过滤。
+func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, status string) (topups []*TopUp, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -421,6 +432,9 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 	}()
 
 	query := tx.Model(&TopUp{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
 	if keyword != "" {
 		pattern, perr := sanitizeLikePattern(keyword)
 		if perr != nil {
@@ -523,6 +537,84 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	syncCreditUserQuotaCache(userId, quotaToAdd, common.LogText("manual topup"))
 	RecordTopupLog(userId, common.NewMessage("Administrator completed the order, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"quota": logger.FormatQuota(quotaToAdd), "amount": fmt.Sprintf("%f", payMoney)}), callerIp, paymentMethod, "admin")
 	return nil
+}
+
+// ManualRejectTopUp 管理员拒绝待支付订单：只把订单标记为失败，不加额度。
+func ManualRejectTopUp(tradeNo string, callerIp string) error {
+	if tradeNo == "" {
+		return common.NewMessage("Order number not provided")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	var userId int
+	var payMoney float64
+	var paymentMethod string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		// 行级锁，避免与补单并发
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return common.NewMessage("Top-up order does not exist")
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return common.NewMessage("Order is already completed")
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return common.NewMessage("Order is not pending payment and cannot be rejected")
+		}
+
+		topUp.Status = common.TopUpStatusFailed
+		topUp.CompleteTime = common.GetTimestamp()
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+
+		userId = topUp.UserId
+		payMoney = topUp.Money
+		paymentMethod = topUp.PaymentMethod
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	RecordTopupLog(userId, common.NewMessage("Administrator rejected the order. Payment amount: {{amount}}", map[string]any{"amount": fmt.Sprintf("%f", payMoney)}), callerIp, paymentMethod, "admin")
+	return nil
+}
+
+// UpdateTopUpNote lets the payer attach or replace the payment reference on
+// their own pending order so the administrator can match it during review.
+func UpdateTopUpNote(tradeNo string, userId int, note string) error {
+	if tradeNo == "" {
+		return common.NewMessage("Order number not provided")
+	}
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return common.NewMessage("Invalid parameters")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	topUp := &TopUp{}
+	if err := DB.Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		return common.NewMessage("Top-up order does not exist")
+	}
+	// 归属校验失败与订单不存在返回同一条消息，避免探测他人订单号。
+	if topUp.UserId != userId {
+		return common.NewMessage("Top-up order does not exist")
+	}
+	if topUp.Status != common.TopUpStatusPending {
+		return common.NewMessage("Order is not pending payment and cannot be updated")
+	}
+
+	topUp.Note = note
+	return topUp.Update()
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
 	if referenceId == "" {

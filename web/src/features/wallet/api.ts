@@ -33,6 +33,8 @@ import type {
   AffiliateTransferResponse,
   BillingHistoryResponse,
   CompleteOrderRequest,
+  RejectOrderRequest,
+  OfflinePayNoteRequest,
   CreemPaymentRequest,
   CreemPaymentResponse,
   WaffoPaymentRequest,
@@ -239,7 +241,8 @@ export async function getUserBillingHistory(
 export async function getAllBillingHistory(
   page: number,
   pageSize: number,
-  keyword?: string
+  keyword?: string,
+  status?: string
 ): Promise<ApiResponse<BillingHistoryResponse>> {
   const params = new URLSearchParams({
     p: page.toString(),
@@ -247,6 +250,9 @@ export async function getAllBillingHistory(
   })
   if (keyword) {
     params.append('keyword', keyword)
+  }
+  if (status) {
+    params.append('status', status)
   }
   const res = await api.get(`/api/user/topup?${params.toString()}`)
   return res.data
@@ -259,5 +265,25 @@ export async function completeOrder(
   request: CompleteOrderRequest
 ): Promise<ApiResponse> {
   const res = await api.post('/api/user/topup/complete', request)
+  return res.data
+}
+
+/**
+ * Reject a pending order without crediting the balance (admin only)
+ */
+export async function rejectOrder(
+  request: RejectOrderRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/topup/reject', request)
+  return res.data
+}
+
+/**
+ * Attach or replace the payment reference on a pending offline order (payer)
+ */
+export async function submitOfflinePayNote(
+  request: OfflinePayNoteRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/topup/offline/note', request)
   return res.data
 }

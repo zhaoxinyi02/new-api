@@ -652,10 +652,27 @@ func GetUserTopUps(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+// topUpStatusFilter 校验管理员列表的状态过滤参数。
+func topUpStatusFilter(status string) (string, bool) {
+	switch status {
+	case "":
+		return "", true
+	case common.TopUpStatusPending, common.TopUpStatusSuccess, common.TopUpStatusFailed, common.TopUpStatusExpired:
+		return status, true
+	default:
+		return "", false
+	}
+}
+
 // GetAllTopUps 管理员获取全平台充值记录
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	status, ok := topUpStatusFilter(c.Query("status"))
+	if !ok {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
 
 	var (
 		topups []*model.TopUp
@@ -663,9 +680,9 @@ func GetAllTopUps(c *gin.Context) {
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = model.SearchAllTopUps(keyword, pageInfo, status)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = model.GetAllTopUps(pageInfo, status)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -694,6 +711,56 @@ func AdminCompleteTopUp(c *gin.Context) {
 	defer UnlockOrder(req.TradeNo)
 
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// AdminRejectTopUp 管理员拒绝接口：把待支付订单标记为失败，不加额度。
+func AdminRejectTopUp(c *gin.Context) {
+	var req AdminCompleteTopupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+
+	LockOrder(req.TradeNo)
+	defer UnlockOrder(req.TradeNo)
+
+	if err := model.ManualRejectTopUp(req.TradeNo, c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// maxOfflineNoteRunes 限制支付凭证长度（按字符计）。
+const maxOfflineNoteRunes = 200
+
+type OfflinePayNoteRequest struct {
+	TradeNo string `json:"trade_no"`
+	Note    string `json:"note"`
+}
+
+// AttachOfflinePayNote 付款人给自己的待支付离线订单补充/更新支付凭证
+// （转账流水号、付款方名称或简短说明），供管理员审核时核对。
+func AttachOfflinePayNote(c *gin.Context) {
+	var req OfflinePayNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	note := strings.TrimSpace(req.Note)
+	if note == "" {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
+	if len([]rune(note)) > maxOfflineNoteRunes {
+		common.ApiErrorT(c, "Payment note is too long")
+		return
+	}
+	if err := model.UpdateTopUpNote(req.TradeNo, c.GetInt("id"), note); err != nil {
 		common.ApiError(c, err)
 		return
 	}

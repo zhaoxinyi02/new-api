@@ -28,6 +28,7 @@ import {
   getUserBillingHistory,
   getAllBillingHistory,
   completeOrder,
+  rejectOrder,
   isApiSuccess,
 } from '../api'
 import type { TopupRecord } from '../types'
@@ -56,6 +57,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const requestIdRef = useRef(0)
   const [loading, setLoading] = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   /**
    * Fetch billing history
@@ -64,8 +67,10 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
+      // The status filter is only supported by the admin endpoint.
+      const status = isAdmin && statusFilter !== 'all' ? statusFilter : ''
       const response = isAdmin
-        ? await getAllBillingHistory(page, pageSize, debouncedKeyword)
+        ? await getAllBillingHistory(page, pageSize, debouncedKeyword, status)
         : await getUserBillingHistory(page, pageSize, debouncedKeyword)
 
       if (requestId !== requestIdRef.current) return
@@ -88,7 +93,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
         setLoading(false)
       }
     }
-  }, [debouncedKeyword, isAdmin, page, pageSize])
+  }, [debouncedKeyword, isAdmin, page, pageSize, statusFilter])
 
   /**
    * Complete a pending order (admin only)
@@ -123,6 +128,37 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   )
 
   /**
+   * Reject a pending order without crediting the balance (admin only)
+   */
+  const handleRejectOrder = useCallback(
+    async (tradeNo: string) => {
+      if (!isAdmin) {
+        toast.error(i18next.t('Admin access required'))
+        return false
+      }
+
+      setRejecting(true)
+      try {
+        const response = await rejectOrder({ trade_no: tradeNo })
+        if (isApiSuccess(response)) {
+          toast.success(i18next.t('Order rejected successfully'))
+          await fetchBillingHistory()
+          return true
+        } else {
+          handleServerError(response, i18next.t('Failed to reject order'))
+          return false
+        }
+      } catch (error) {
+        handleServerError(error, i18next.t('Failed to reject order'))
+        return false
+      } finally {
+        setRejecting(false)
+      }
+    },
+    [isAdmin, fetchBillingHistory]
+  )
+
+  /**
    * Change page
    */
   const handlePageChange = useCallback((newPage: number) => {
@@ -146,6 +182,14 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setPage(1) // Reset to first page when searching
   }, [])
 
+  /**
+   * Change the admin status filter
+   */
+  const handleStatusFilterChange = useCallback((newStatus: string) => {
+    setStatusFilter(newStatus)
+    setPage(1)
+  }, [])
+
   // Fetch data after the search draft has settled.
   useEffect(() => {
     if (keyword !== debouncedKeyword) return
@@ -161,11 +205,15 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     keyword,
     loading,
     completing,
+    rejecting,
     isAdmin,
+    statusFilter,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
+    handleStatusFilterChange,
     handleCompleteOrder,
+    handleRejectOrder,
     refresh: fetchBillingHistory,
   }
 }

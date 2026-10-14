@@ -73,24 +73,39 @@ export function BillingHistoryDialog({
     keyword,
     loading,
     completing,
+    rejecting,
     isAdmin,
+    statusFilter,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
+    handleStatusFilterChange,
     handleCompleteOrder,
+    handleRejectOrder,
   } = useBillingHistory()
 
-  const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<{
+    tradeNo: string
+    action: 'approve' | 'reject'
+  } | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
 
   const totalPages = Math.ceil(total / pageSize)
+  const isRejectConfirm = confirm?.action === 'reject'
+  const confirmBusy = completing || rejecting
+  let confirmLabel = isRejectConfirm ? t('Reject') : t('Confirm')
+  if (confirmBusy) {
+    confirmLabel = t('Processing...')
+  }
 
-  const handleConfirmComplete = async () => {
-    if (confirmTradeNo) {
-      const success = await handleCompleteOrder(confirmTradeNo)
-      if (success) {
-        setConfirmTradeNo(null)
-      }
+  const handleConfirm = async () => {
+    if (!confirm) return
+    const success =
+      confirm.action === 'approve'
+        ? await handleCompleteOrder(confirm.tradeNo)
+        : await handleRejectOrder(confirm.tradeNo)
+    if (success) {
+      setConfirm(null)
     }
   }
 
@@ -100,9 +115,13 @@ export function BillingHistoryDialog({
         open={open}
         onOpenChange={onOpenChange}
         title={t('Billing History')}
-        description={t(
-          'View your topup transaction records and payment history'
-        )}
+        description={
+          isAdmin
+            ? t(
+                'Review top-up orders from all users. Approve a pending order to credit the balance; reject it if the payment never arrived.'
+              )
+            : t('View your topup transaction records and payment history')
+        }
         contentClassName='flex max-h-(--dialog-available-height) flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
         bodyClassName='space-y-3'
@@ -119,6 +138,34 @@ export function BillingHistoryDialog({
                 className='h-9 pl-10'
               />
             </div>
+            {isAdmin && (
+              <Select
+                items={[
+                  { value: 'all', label: t('All statuses') },
+                  { value: 'pending', label: t('Pending') },
+                  { value: 'success', label: t('Success') },
+                  { value: 'failed', label: t('Failed') },
+                  { value: 'expired', label: t('Expired') },
+                ]}
+                value={statusFilter}
+                onValueChange={(value) =>
+                  value !== null && handleStatusFilterChange(value)
+                }
+              >
+                <SelectTrigger className='h-9 w-[110px]'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value='all'>{t('All statuses')}</SelectItem>
+                    <SelectItem value='pending'>{t('Pending')}</SelectItem>
+                    <SelectItem value='success'>{t('Success')}</SelectItem>
+                    <SelectItem value='failed'>{t('Failed')}</SelectItem>
+                    <SelectItem value='expired'>{t('Expired')}</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            )}
             <Select
               items={[
                 { value: '10', label: t('10 / page') },
@@ -265,16 +312,51 @@ export function BillingHistoryDialog({
                         </div>
                       </div>
 
+                      {/* Payer-submitted payment reference */}
+                      {record.note && (
+                        <div className='mt-3 space-y-1'>
+                          <Label className='text-muted-foreground text-xs'>
+                            {t('Payment note')}
+                          </Label>
+                          <p className='text-sm break-all whitespace-pre-wrap'>
+                            {record.note}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Admin Actions */}
                       {isAdmin && record.status === 'pending' && (
-                        <div className='mt-4 flex justify-end'>
+                        <div className='mt-4 flex justify-end gap-2'>
+                          {record.payment_provider === 'offline' && (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              className='text-destructive hover:text-destructive'
+                              onClick={() =>
+                                setConfirm({
+                                  tradeNo: record.trade_no,
+                                  action: 'reject',
+                                })
+                              }
+                              disabled={rejecting}
+                            >
+                              {t('Reject')}
+                            </Button>
+                          )}
                           <Button
                             size='sm'
                             variant='outline'
-                            onClick={() => setConfirmTradeNo(record.trade_no)}
+                            onClick={() =>
+                              setConfirm({
+                                tradeNo: record.trade_no,
+                                action: 'approve',
+                              })
+                            }
                             disabled={completing}
                           >
-                            {t('Complete Order')}
+                            {record.payment_provider === 'offline'
+                              ? t('Approve')
+                              : t('Complete Order')}
                           </Button>
                         </div>
                       )}
@@ -322,29 +404,34 @@ export function BillingHistoryDialog({
         </div>
       </Dialog>
 
-      {/* Confirm Complete Order Dialog */}
+      {/* Confirm Approve / Reject Order Dialog */}
       <AlertDialog
-        open={!!confirmTradeNo}
-        onOpenChange={(open) => !open && setConfirmTradeNo(null)}
+        open={!!confirm}
+        onOpenChange={(open) => !open && setConfirm(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('Complete Order')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirm?.action === 'reject'
+                ? t('Reject order')
+                : t('Complete Order')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {t(
-                'Are you sure you want to manually complete this order? The user will be credited with the corresponding quota.'
-              )}
+              {confirm?.action === 'reject'
+                ? t(
+                    'Rejecting this order will mark it as failed without crediting the balance. This action cannot be undone.'
+                  )
+                : t(
+                    'Are you sure you want to manually complete this order? The user will be credited with the corresponding quota.'
+                  )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={completing}>
+            <AlertDialogCancel disabled={completing || rejecting}>
               {t('Cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmComplete}
-              disabled={completing}
-            >
-              {completing ? t('Processing...') : t('Confirm')}
+            <AlertDialogAction onClick={handleConfirm} disabled={confirmBusy}>
+              {confirmLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -7338,6 +7338,9 @@
     "Transaction type": "Type de transaction",
     "Voucher deduction": "Déduction du bon",
     "Wallet top-up": "Rechargement du portefeuille",
-    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)"
+    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)",
+    "Plan information": "Informations sur le forfait",
+    "Plan purchase": "Achat d'un forfait",
+    "Quota used": "Quota utilisé"
   }
 }

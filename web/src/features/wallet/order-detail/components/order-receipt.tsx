@@ -32,6 +32,7 @@ import type { TopupOrderDetail } from '../../types'
 import { ReceiptAmountCard } from './receipt-amount-card'
 import { ReceiptInfoCard, type ReceiptField } from './receipt-info-card'
 import { ReceiptItemsCard } from './receipt-items-card'
+import { ReceiptPlanCard } from './receipt-plan-card'
 
 /**
  * Full order receipt: order number and status, the amount breakdown, the order
@@ -94,7 +95,14 @@ export function OrderReceipt(props: { detail: TopupOrderDetail }) {
         />
       </div>
 
-      <ReceiptAmountCard order={order} />
+      <ReceiptAmountCard order={order} plan={props.detail.plan} />
+
+      {props.detail.plan && (
+        <ReceiptPlanCard
+          plan={props.detail.plan}
+          subscription={props.detail.subscription}
+        />
+      )}
 
       <div className='grid gap-4 xl:grid-cols-2 xl:items-start'>
         <ReceiptInfoCard title={t('Basic information')} fields={orderFields} />
@@ -104,7 +112,7 @@ export function OrderReceipt(props: { detail: TopupOrderDetail }) {
         />
       </div>
 
-      <ReceiptItemsCard order={order} />
+      <ReceiptItemsCard order={order} plan={props.detail.plan} />
     </>
   )
 }

@@ -38,6 +38,49 @@ const orderDetail = {
   seller: '湖北省澜算科技有限责任公司',
 }
 
+// An offline payment applied to a plan keeps its trade number, carries no wallet
+// credit, and owns a subscription order pointing at the plan that was bought.
+const PLAN_TRADE_NO = 'OFF17NO1791961740ifaAJZ'
+const planPurchaseDetail = {
+  order: {
+    ...orderDetail.order,
+    id: 38,
+    user_id: 17,
+    amount: 0,
+    money: 1000,
+    trade_no: PLAN_TRADE_NO,
+    create_time: 1791961740,
+    complete_time: 1791961899,
+  },
+  payer: 'zhanwei',
+  seller: '湖北省澜算科技有限责任公司',
+  plan: {
+    id: 1,
+    title: '标准包月套餐',
+    subtitle: '¥1000 / 月，含 ¥1000 等值用量',
+    price_amount: 1000,
+    currency: 'CNY',
+    duration_unit: 'month',
+    duration_value: 1,
+    quota_reset_period: 'never',
+    enabled: true,
+    sort_order: 0,
+    max_purchase_per_user: 0,
+    total_amount: 500000000,
+  },
+  subscription: {
+    id: 1,
+    user_id: 17,
+    plan_id: 1,
+    status: 'active',
+    source: 'order',
+    start_time: 1791961899,
+    end_time: 1794640299,
+    amount_total: 500000000,
+    amount_used: 0,
+  },
+}
+
 const i18n = createInstance()
 
 beforeEach(async () => {
@@ -131,6 +174,34 @@ it('renders every receipt section from the order returned by the API', async () 
 
   const backToWallet = screen.getByRole('button', { name: /返回钱包/ })
   expect(backToWallet).toHaveAttribute('href', '/wallet')
+
+  // A plain wallet top-up has no plan block.
+  expect(screen.queryByText('套餐信息')).toBeNull()
+})
+
+it('renders a plan purchase instead of a wallet credit', async () => {
+  mockApi(async () => ({ data: { success: true, data: planPurchaseDetail } }))
+
+  renderPage()
+
+  expect(await screen.findByText('套餐信息')).toBeVisible()
+
+  // The plan block names the plan and its entitlement.
+  expect(screen.getAllByText('标准包月套餐').length).toBeGreaterThan(0)
+  expect(screen.getByText('¥1000 / 月，含 ¥1000 等值用量')).toBeVisible()
+  // The plan quota is the credited amount, shown on both the amount breakdown
+  // and the plan block.
+  expect(screen.getAllByText('套餐额度').length).toBeGreaterThan(0)
+  expect(screen.getByText('已用额度')).toBeVisible()
+  expect(screen.getByText('生效')).toBeVisible()
+  expect(screen.getByText(/~ \d{4}-\d{2}-\d{2}/)).toBeVisible()
+
+  // The paid amount is unchanged, while the credited wallet balance is gone.
+  expect(screen.getAllByText(/[$¥]\s?1,?000(\.\d+)?/).length).toBeGreaterThan(0)
+
+  // The line item describes the plan purchase, not a top-up.
+  expect(screen.getByText(/套餐购买/)).toBeVisible()
+  expect(screen.queryByText('余额充值')).toBeNull()
 })
 
 it('shows the not-found state when the order cannot be loaded', async () => {

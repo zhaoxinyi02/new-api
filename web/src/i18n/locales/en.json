@@ -7338,6 +7338,9 @@
     "Transaction type": "Transaction type",
     "Voucher deduction": "Voucher deduction",
     "Wallet top-up": "Wallet top-up",
-    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)"
+    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} points)",
+    "Plan information": "Plan information",
+    "Plan purchase": "Plan purchase",
+    "Quota used": "Quota used"
   }
 }

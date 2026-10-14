@@ -28,20 +28,26 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { TitledCard } from '@/components/ui/titled-card'
+import { formatDuration } from '@/features/subscriptions/lib'
+import type { SubscriptionPlan } from '@/features/subscriptions/types'
 import {
   formatCurrencyFromUSD,
   formatLocalCurrencyAmount,
 } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 
 import { getStatusConfig } from '../../lib/billing'
 import type { TopupRecord } from '../../types'
 
 /**
- * Order line items. A top-up order is always one prepaid credit purchase, so
- * the table repeats the order amounts per product as the reimbursement form
- * expects them.
+ * Order line items. Each order is a single product — a wallet credit, or the
+ * plan an offline payment was applied to — so the table repeats the order
+ * amounts per product as the reimbursement form expects them.
  */
-export function ReceiptItemsCard(props: { order: TopupRecord }) {
+export function ReceiptItemsCard(props: {
+  order: TopupRecord
+  plan?: SubscriptionPlan | null
+}) {
   const { t } = useTranslation()
   const statusConfig = getStatusConfig(props.order.status)
   const money = formatLocalCurrencyAmount(props.order.money)
@@ -51,6 +57,10 @@ export function ReceiptItemsCard(props: { order: TopupRecord }) {
     digitsSmall: 2,
     abbreviate: false,
   })
+  const product = props.plan ? props.plan.title : t('Wallet top-up')
+  const configuration = props.plan
+    ? `${t('Plan purchase')} · ${formatQuota(props.plan.total_amount)} / ${formatDuration(props.plan, t)}`
+    : `${t('Credits added')} ${credited}`
 
   return (
     <TitledCard title={t('Order items')} disableHoverEffect>
@@ -76,10 +86,8 @@ export function ReceiptItemsCard(props: { order: TopupRecord }) {
         </TableHeader>
         <TableBody>
           <TableRow>
-            <TableCell>{t('Wallet top-up')}</TableCell>
-            <TableCell>
-              {t('Credits added')} {credited}
-            </TableCell>
+            <TableCell>{product}</TableCell>
+            <TableCell>{configuration}</TableCell>
             <TableCell>{t('Prepaid')}</TableCell>
             <TableCell className='text-right'>1</TableCell>
             <TableCell>

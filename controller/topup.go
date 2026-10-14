@@ -701,11 +701,32 @@ func GetTopUpDetail(c *gin.Context) {
 	if user, err := model.GetUserById(topUp.UserId, false); err == nil {
 		payer = user.Username
 	}
-	common.ApiSuccess(c, gin.H{
-		"order":  topUp,
-		"payer":  payer,
-		"seller": paymentSellerName(),
-	})
+	detail := gin.H{
+		"order":        topUp,
+		"payer":        payer,
+		"seller":       paymentSellerName(),
+		"plan":         nil,
+		"subscription": nil,
+	}
+	// An offline payment can be applied to a plan instead of a wallet credit.
+	// Such an order keeps the same trade number but also owns a subscription
+	// order, which is what lets the receipt show the plan the customer bought.
+	if subOrder := model.GetSubscriptionOrderByTradeNo(topUp.TradeNo); subOrder != nil {
+		if plan, err := model.GetSubscriptionPlanById(subOrder.PlanId); err == nil && plan != nil {
+			detail["plan"] = plan
+			// GetAllUserSubscriptions is ordered by end_time desc, so the first
+			// match is the subscription this purchase is currently governed by.
+			if summaries, err := model.GetAllUserSubscriptions(topUp.UserId); err == nil {
+				for _, summary := range summaries {
+					if summary.Subscription != nil && summary.Subscription.PlanId == plan.Id {
+						detail["subscription"] = summary.Subscription
+						break
+					}
+				}
+			}
+		}
+	}
+	common.ApiSuccess(c, detail)
 }
 
 func GetUserTopUps(c *gin.Context) {

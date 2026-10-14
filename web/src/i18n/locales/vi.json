@@ -7338,6 +7338,9 @@
     "Transaction type": "Loại giao dịch",
     "Voucher deduction": "Khấu trừ phiếu giảm giá",
     "Wallet top-up": "Nạp tiền vào ví",
-    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} điểm)"
+    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} điểm)",
+    "Plan information": "Thông tin gói",
+    "Plan purchase": "Mua gói",
+    "Quota used": "Hạn mức đã dùng"
   }
 }

@@ -7338,6 +7338,9 @@
     "Transaction type": "取引種別",
     "Voucher deduction": "クーポン値引き",
     "Wallet top-up": "残高チャージ",
-    "{{amount}} ({{points}} points)": "{{amount}}（{{points}} ポイント）"
+    "{{amount}} ({{points}} points)": "{{amount}}（{{points}} ポイント）",
+    "Plan information": "プラン情報",
+    "Plan purchase": "プランの購入",
+    "Quota used": "使用済みクォータ"
   }
 }

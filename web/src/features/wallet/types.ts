@@ -16,6 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type {
+  SubscriptionPlan,
+  UserSubscription,
+} from '@/features/subscriptions/types'
+
 // ============================================================================
 // Wallet Type Definitions
 // ============================================================================
@@ -327,6 +332,13 @@ export interface TopupOrderDetail {
   payer: string
   /** Legal entity behind the configured payment information */
   seller: string
+  /**
+   * Present when the payment was applied to a plan instead of a wallet credit;
+   * the receipt then shows the plan the customer bought.
+   */
+  plan?: SubscriptionPlan | null
+  /** The user's subscription for that plan, when one exists */
+  subscription?: UserSubscription | null
 }
 
 export type TopupOrderDetailResponse = ApiResponse<TopupOrderDetail>

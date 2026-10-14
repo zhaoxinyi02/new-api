@@ -7338,6 +7338,9 @@
     "Transaction type": "交易類型",
     "Voucher deduction": "折價券抵扣",
     "Wallet top-up": "餘額儲值",
-    "{{amount}} ({{points}} points)": "{{amount}}（{{points}} 點數）"
+    "{{amount}} ({{points}} points)": "{{amount}}（{{points}} 點數）",
+    "Plan information": "套餐資訊",
+    "Plan purchase": "套餐購買",
+    "Quota used": "已用額度"
   }
 }

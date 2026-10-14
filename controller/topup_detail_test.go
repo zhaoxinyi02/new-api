@@ -24,7 +24,13 @@ func setupTopUpDetailTest(t *testing.T) (ownerId int, strangerId int) {
 	previousDB := model.DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.TopUp{},
+		&model.SubscriptionPlan{},
+		&model.SubscriptionOrder{},
+		&model.UserSubscription{},
+	))
 	model.DB = db
 	t.Cleanup(func() { model.DB = previousDB })
 
@@ -67,6 +73,68 @@ func getTopUpDetail(t *testing.T, router *gin.Engine, tradeNo string) *httptest.
 	return recorder
 }
 
+// An offline payment applied to a plan keeps its trade number and additionally
+// owns a subscription order, which is how the receipt knows to show the plan
+// instead of a wallet credit.
+func TestGetTopUpDetailReturnsPlanPurchase(t *testing.T) {
+	ownerId, _ := setupTopUpDetailTest(t)
+	t.Setenv(offlinePayInfoEnv, `{"holder":"湖北省澜算科技有限责任公司","account":"17260401040013448"}`)
+
+	plan := &model.SubscriptionPlan{
+		Title:            "标准包月套餐",
+		PriceAmount:      1000,
+		Currency:         "CNY",
+		DurationUnit:     model.SubscriptionDurationMonth,
+		DurationValue:    1,
+		Enabled:          true,
+		TotalAmount:      500000000,
+		QuotaResetPeriod: model.SubscriptionResetNever,
+	}
+	plan.NormalizeDefaults()
+	require.NoError(t, model.DB.Create(plan).Error)
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	require.NoError(t, model.DB.Create(&model.SubscriptionOrder{
+		UserId:          ownerId,
+		PlanId:          plan.Id,
+		Money:           1000,
+		TradeNo:         detailTestTradeNo,
+		PaymentMethod:   model.PaymentMethodOfflineQR,
+		PaymentProvider: model.PaymentProviderOffline,
+		Status:          common.TopUpStatusSuccess,
+		CreateTime:      1791897638,
+		CompleteTime:    1791897700,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.UserSubscription{
+		UserId:      ownerId,
+		PlanId:      plan.Id,
+		AmountTotal: plan.TotalAmount,
+		StartTime:   1791897700,
+		EndTime:     1794586500,
+		Status:      "active",
+		Source:      "order",
+	}).Error)
+
+	recorder := getTopUpDetail(t, topUpDetailRouter(ownerId, common.RoleCommonUser), detailTestTradeNo)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	body := map[string]any{}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
+	data := body["data"].(map[string]any)
+
+	planPayload, ok := data["plan"].(map[string]any)
+	require.True(t, ok, "plan payload missing")
+	assert.Equal(t, "标准包月套餐", planPayload["title"])
+	assert.Equal(t, float64(500000000), planPayload["total_amount"])
+	assert.Equal(t, model.SubscriptionResetNever, planPayload["quota_reset_period"])
+
+	subscription, ok := data["subscription"].(map[string]any)
+	require.True(t, ok, "subscription payload missing")
+	assert.Equal(t, "active", subscription["status"])
+	assert.Equal(t, float64(plan.TotalAmount), subscription["amount_total"])
+	assert.Equal(t, float64(1794586500), subscription["end_time"])
+}
+
 func TestGetTopUpDetailReturnsReceiptFields(t *testing.T) {
 	ownerId, _ := setupTopUpDetailTest(t)
 	t.Setenv(offlinePayInfoEnv, `{"holder":"湖北省澜算科技有限责任公司","account":"17260401040013448"}`)
@@ -93,6 +161,9 @@ func TestGetTopUpDetailReturnsReceiptFields(t *testing.T) {
 	assert.Equal(t, "微信流水 12345", order["note"])
 	assert.NotZero(t, order["create_time"])
 	assert.NotZero(t, order["complete_time"])
+	// A plain wallet top-up carries no plan purchase.
+	assert.Nil(t, data["plan"])
+	assert.Nil(t, data["subscription"])
 }
 
 func TestGetTopUpDetailAccessControl(t *testing.T) {

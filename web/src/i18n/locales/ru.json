@@ -7338,6 +7338,9 @@
     "Transaction type": "Тип транзакции",
     "Voucher deduction": "Списание купона",
     "Wallet top-up": "Пополнение баланса",
-    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} баллов)"
+    "{{amount}} ({{points}} points)": "{{amount}} ({{points}} баллов)",
+    "Plan information": "Информация о тарифе",
+    "Plan purchase": "Покупка тарифа",
+    "Quota used": "Использованная квота"
   }
 }

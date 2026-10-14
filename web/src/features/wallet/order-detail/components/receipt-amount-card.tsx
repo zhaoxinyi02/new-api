@@ -20,10 +20,12 @@ import { useTranslation } from 'react-i18next'
 
 import { Separator } from '@/components/ui/separator'
 import { TitledCard } from '@/components/ui/titled-card'
+import type { SubscriptionPlan } from '@/features/subscriptions/types'
 import {
   formatCurrencyFromUSD,
   formatLocalCurrencyAmount,
 } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 
 import type { TopupRecord } from '../../types'
 import { ReceiptRow } from './receipt-row'
@@ -33,15 +35,21 @@ import { ReceiptRow } from './receipt-row'
  * deduction rows are always zero; they stay visible because the receipt is used
  * as payment proof and the reimbursement form asks for every amount.
  */
-export function ReceiptAmountCard(props: { order: TopupRecord }) {
+export function ReceiptAmountCard(props: {
+  order: TopupRecord
+  plan?: SubscriptionPlan | null
+}) {
   const { t } = useTranslation()
   const money = formatLocalCurrencyAmount(props.order.money)
   const noDeduction = `-${formatLocalCurrencyAmount(0)}`
-  const credited = formatCurrencyFromUSD(props.order.amount, {
-    digitsLarge: 2,
-    digitsSmall: 2,
-    abbreviate: false,
-  })
+  // A plan purchase credits plan quota instead of wallet balance.
+  const credited = props.plan
+    ? formatQuota(props.plan.total_amount)
+    : formatCurrencyFromUSD(props.order.amount, {
+        digitsLarge: 2,
+        digitsSmall: 2,
+        abbreviate: false,
+      })
 
   return (
     <TitledCard title={t('Amount to pay')} disableHoverEffect>
@@ -61,7 +69,10 @@ export function ReceiptAmountCard(props: { order: TopupRecord }) {
           })}
         />
         <ReceiptRow label={t('Amount paid')} value={money} />
-        <ReceiptRow label={t('Credits added')} value={credited} />
+        <ReceiptRow
+          label={props.plan ? t('Plan Quota') : t('Credits added')}
+          value={credited}
+        />
       </div>
     </TitledCard>
   )

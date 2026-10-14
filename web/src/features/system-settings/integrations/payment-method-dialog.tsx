@@ -71,6 +71,8 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
+  offline: 'LuLandmark',
+  offline_qr: 'LuQrCode',
 }
 
 const getDefaultIconName = (type: string) => PAYMENT_TYPE_ICON_NAMES[type] ?? ''
@@ -108,6 +110,18 @@ export function PaymentMethodDialog({
       label: 'Waffo Pancake (waffo_pancake)',
       name: 'Waffo Pancake',
       value: 'waffo_pancake',
+    },
+    {
+      iconName: 'LuLandmark',
+      label: `${t('Corporate bank transfer')} (offline)`,
+      name: t('Corporate bank transfer'),
+      value: 'offline',
+    },
+    {
+      iconName: 'LuQrCode',
+      label: `${t('Scan to pay')} (offline_qr)`,
+      name: t('Scan to pay'),
+      value: 'offline_qr',
     },
   ]
   const getPaymentTypeOption = (value: string) =>

@@ -37,6 +37,7 @@ export const PAYMENT_TYPES = {
   WAFFO: 'waffo',
   WAFFO_PANCAKE: 'waffo_pancake',
   OFFLINE: 'offline',
+  OFFLINE_QR: 'offline_qr',
 } as const
 
 /**
@@ -55,6 +56,7 @@ export const PAYMENT_ICON_COLORS = {
   [PAYMENT_TYPES.WAFFO]: '#2563EB',
   [PAYMENT_TYPES.WAFFO_PANCAKE]: '#F97316',
   [PAYMENT_TYPES.OFFLINE]: '#0EA5E9',
+  [PAYMENT_TYPES.OFFLINE_QR]: '#0EA5E9',
 } as const
 
 /**

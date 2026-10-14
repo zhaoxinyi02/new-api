@@ -65,6 +65,47 @@ it('omits the QR section when no QR image is configured', () => {
   expect(screen.getByText('湖北省澜算科技有限责任公司')).toBeVisible()
 })
 
+it('shows the scan-to-pay copy and hides bank fields for a QR order', () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <OfflinePayDialog
+        open
+        onOpenChange={vi.fn()}
+        order={{
+          ...baseOrder,
+          payment_method: 'offline_qr',
+          pay_info: {
+            holder: '湖北省澜算科技有限责任公司',
+            qr_image: 'data:image/png;base64,AAAA',
+          },
+        }}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('扫码付款')).toBeVisible()
+  expect(screen.getByRole('button', { name: '我已完成付款' })).toBeVisible()
+  expect(
+    screen.getByText('到账后管理员会核对订单并为你加额度。')
+  ).toBeVisible()
+  expect(screen.queryByText('中国农业银行')).not.toBeInTheDocument()
+})
+
+it('keeps the bank transfer copy for a transfer order', () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <OfflinePayDialog
+        open
+        onOpenChange={vi.fn()}
+        order={{ ...baseOrder, payment_method: 'offline' }}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('对公转账')).toBeVisible()
+  expect(screen.getByRole('button', { name: '我已完成转账' })).toBeVisible()
+  expect(screen.getByText('中国农业银行')).toBeVisible()
+  expect(screen.queryByText('我已完成付款')).not.toBeInTheDocument()
+})
+
 it('submits the payment note for the current order', async () => {
   const user = userEvent.setup()
   const post = vi

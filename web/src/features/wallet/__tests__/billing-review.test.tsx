@@ -25,7 +25,7 @@ beforeEach(async () => {
     data: {
       success: true,
       data: {
-        total: 2,
+        total: 3,
         items: [
           {
             id: 1,
@@ -48,6 +48,18 @@ beforeEach(async () => {
             payment_method: 'alipay',
             create_time: 2,
             status: 'pending',
+          },
+          {
+            id: 3,
+            user_id: 7,
+            amount: 20,
+            money: 20,
+            trade_no: 'OFF-review-3',
+            payment_method: 'offline_qr',
+            payment_provider: 'offline',
+            create_time: 3,
+            complete_time: 4,
+            status: 'success',
           },
         ],
       },
@@ -115,4 +127,66 @@ it('completes a pending order through the complete endpoint after confirmation',
       trade_no: 'OFF-review-1',
     })
   })
+})
+
+it('labels a QR order as scan-to-pay and shows its payment time', async () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <BillingHistoryDialog
+        open
+        onOpenChange={vi.fn()}
+        currentUser={{ id: 8, username: 'lansuan' }}
+      />
+    </I18nextProvider>
+  )
+  await screen.findByText('OFF-review-3')
+
+  expect(screen.getByText('扫码付款')).toBeVisible()
+  // Only the completed order carries a payment time.
+  expect(screen.getByText('支付时间')).toBeVisible()
+  expect(screen.getAllByText('支付时间')).toHaveLength(1)
+})
+
+it('opens the order receipt with payer, method and amount', async () => {
+  const user = userEvent.setup()
+  render(
+    <I18nextProvider i18n={i18n}>
+      <BillingHistoryDialog
+        open
+        onOpenChange={vi.fn()}
+        currentUser={{ id: 8, username: 'lansuan' }}
+      />
+    </I18nextProvider>
+  )
+  await screen.findByText('OFF-review-3')
+
+  await user.click(screen.getByRole('button', { name: '详情 OFF-review-3' }))
+
+  const receipt = await screen.findByRole('dialog', { name: '订单详情' })
+  expect(within(receipt).getByText('OFF-review-3')).toBeVisible()
+  expect(within(receipt).getByText('支付方')).toBeVisible()
+  expect(within(receipt).getByText('用户 ID: 7')).toBeVisible()
+  expect(within(receipt).getByText('扫码付款')).toBeVisible()
+  // The receipt amount is formatted with the active display currency, so only
+  // the value itself is part of the contract here.
+  expect(within(receipt).getAllByText(/[$¥]\s?20/).length).toBeGreaterThan(0)
+})
+
+it('shows the signed-in username as payer for the user\'s own order', async () => {
+  const user = userEvent.setup()
+  render(
+    <I18nextProvider i18n={i18n}>
+      <BillingHistoryDialog
+        open
+        onOpenChange={vi.fn()}
+        currentUser={{ id: 8, username: 'lansuan' }}
+      />
+    </I18nextProvider>
+  )
+  await screen.findByText('OFF-review-1')
+
+  await user.click(screen.getByRole('button', { name: '详情 OFF-review-1' }))
+
+  const receipt = await screen.findByRole('dialog', { name: '订单详情' })
+  expect(within(receipt).getByText('lansuan')).toBeVisible()
 })

@@ -68,6 +68,7 @@ export const PAYMENT_METHOD_NAMES: Record<string, string> = {
   wxpay: 'WeChat Pay',
   waffo: 'Waffo',
   offline: 'Corporate bank transfer',
+  offline_qr: 'Scan to pay',
 }
 
 /**

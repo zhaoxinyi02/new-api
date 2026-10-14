@@ -200,7 +200,11 @@ export function Wallet(props: WalletProps) {
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
 
-    if (selectedPaymentMethod.type === PAYMENT_TYPES.OFFLINE) {
+    const isOfflinePayment =
+      selectedPaymentMethod.type === PAYMENT_TYPES.OFFLINE ||
+      selectedPaymentMethod.type === PAYMENT_TYPES.OFFLINE_QR
+
+    if (isOfflinePayment) {
       setPaymentLoading(selectedPaymentMethod.type)
       try {
         const response = await requestOfflinePayment({
@@ -410,6 +414,9 @@ export function Wallet(props: WalletProps) {
       <BillingHistoryDialog
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
+        currentUser={
+          user ? { id: user.id, username: user.username } : undefined
+        }
       />
 
       <CreemConfirmDialog

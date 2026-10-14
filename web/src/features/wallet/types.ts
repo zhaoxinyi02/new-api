@@ -49,6 +49,8 @@ export type OfflineOrder = {
   trade_no: string
   amount: number
   money: string
+  /** Chosen offline variant: offline (bank transfer) or offline_qr (QR payment) */
+  payment_method?: string
   pay_info: Record<string, string>
 }
 export type OfflinePaymentResponse = ApiResponse<OfflineOrder>

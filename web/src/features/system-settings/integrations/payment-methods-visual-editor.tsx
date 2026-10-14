@@ -48,7 +48,8 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
-  offline: 'LuCreditCard',
+  offline: 'LuLandmark',
+  offline_qr: 'LuQrCode',
 }
 
 function getDefaultIconName(type: string) {
@@ -104,6 +105,15 @@ export function PaymentMethodsVisualEditor({
         icon: getDefaultIconName('offline'),
         name: '对公转账',
         type: 'offline',
+      },
+    },
+    {
+      name: t('Scan to pay'),
+      template: {
+        icon: getDefaultIconName('offline_qr'),
+        min_topup: '10',
+        name: '扫码付款',
+        type: 'offline_qr',
       },
     },
     {

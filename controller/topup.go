@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -364,21 +365,27 @@ func RequestEpay(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
-const offlinePayInfoEnv = "OFFLINE_PAY_INFO"
+const (
+	offlinePayInfoEnv = "OFFLINE_PAY_INFO"
+	qrPayInfoEnv      = "QR_PAY_INFO"
+)
 
-// offlinePayMethodEnabled reports whether the operator has enabled the offline
-// (corporate bank transfer) payment method. The method itself is declared in the
-// regular PayMethods setting; the收款信息 comes from the OFFLINE_PAY_INFO
-// environment variable so the visual payment-method editor cannot clobber it.
+// offlinePayMethodEnabled reports whether the operator has enabled at least one
+// manual offline payment method (corporate bank transfer or QR payment). The
+// methods themselves are declared in the regular PayMethods setting; the收款信息
+// comes from the OFFLINE_PAY_INFO / QR_PAY_INFO environment variables so the
+// visual payment-method editor cannot clobber it.
 func offlinePayMethodEnabled() bool {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		return false
 	}
-	return operation_setting.ContainsPayMethod(model.PaymentMethodOffline)
+	return slices.ContainsFunc(model.OfflinePaymentMethods, operation_setting.ContainsPayMethod)
 }
 
-func getOfflinePayInfo() map[string]string {
-	raw := strings.TrimSpace(os.Getenv(offlinePayInfoEnv))
+// readPayInfoEnv reads one JSON收款信息 environment variable. A variable that is
+// not valid JSON is shown verbatim as free text instead of being dropped.
+func readPayInfoEnv(name string) map[string]string {
+	raw := strings.TrimSpace(os.Getenv(name))
 	info := map[string]string{}
 	if raw == "" {
 		return info
@@ -389,13 +396,39 @@ func getOfflinePayInfo() map[string]string {
 	return info
 }
 
-type OfflinePayRequest struct {
-	Amount int64 `json:"amount"`
+// offlinePayInfo returns the收款信息 for a manual payment method: QR payment
+// reads QR_PAY_INFO, everything else reads the bank-transfer OFFLINE_PAY_INFO.
+func offlinePayInfo(method string) map[string]string {
+	if method == model.PaymentMethodOfflineQR {
+		return readPayInfoEnv(qrPayInfoEnv)
+	}
+	return readPayInfoEnv(offlinePayInfoEnv)
 }
 
-// RequestOfflinePay creates a pending top-up order for an offline corporate
-// bank transfer. No gateway is contacted; an administrator later confirms the
-// received transfer via AdminCompleteTopUp, which credits the quota.
+type OfflinePayRequest struct {
+	Amount int64 `json:"amount"`
+	// PaymentMethod selects the offline variant: offline (bank transfer) or
+	// offline_qr (scan the收款码). An empty value means bank transfer.
+	PaymentMethod string `json:"payment_method"`
+}
+
+// normalizeOfflinePayMethod validates the requested offline payment method and
+// defaults an omitted one to the corporate bank transfer flow.
+func normalizeOfflinePayMethod(raw string) (string, bool) {
+	method := strings.TrimSpace(raw)
+	if method == "" {
+		return model.PaymentMethodOffline, true
+	}
+	if !model.IsOfflinePaymentMethod(method) {
+		return "", false
+	}
+	return method, true
+}
+
+// RequestOfflinePay creates a pending top-up order for a manual payment: a
+// corporate bank transfer or a QR payment. No gateway is contacted; an
+// administrator later confirms the received payment via AdminCompleteTopUp,
+// which credits the quota.
 func RequestOfflinePay(c *gin.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		paymentError(c, common.NewMessage("Payment, redemption, subscription, and invitation reward features are disabled. The administrator must confirm compliance terms before enabling them."))
@@ -407,6 +440,11 @@ func RequestOfflinePay(c *gin.Context) {
 		return
 	}
 	if !offlinePayMethodEnabled() {
+		paymentError(c, common.NewMessage("Payment method does not exist"))
+		return
+	}
+	method, ok := normalizeOfflinePayMethod(req.PaymentMethod)
+	if !ok || !operation_setting.ContainsPayMethod(method) {
 		paymentError(c, common.NewMessage("Payment method does not exist"))
 		return
 	}
@@ -442,24 +480,25 @@ func RequestOfflinePay(c *gin.Context) {
 		Amount:          amount,
 		Money:           payMoney,
 		TradeNo:         tradeNo,
-		PaymentMethod:   model.PaymentMethodOffline,
+		PaymentMethod:   method,
 		PaymentProvider: model.PaymentProviderOffline,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
-		logger.LogError(c.Request.Context(), common.LogText("Offline pay failed to create top-up order user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))
+		logger.LogError(c.Request.Context(), common.LogText("Offline pay failed to create top-up order user_id=%d trade_no=%s method=%s amount=%d error=%q", id, tradeNo, method, req.Amount, err.Error()))
 		paymentError(c, common.NewMessage("Failed to create order"))
 		return
 	}
-	logger.LogInfo(c.Request.Context(), common.LogText("Offline top-up order created user_id=%d trade_no=%s amount=%d money=%.2f", id, tradeNo, req.Amount, payMoney))
+	logger.LogInfo(c.Request.Context(), common.LogText("Offline top-up order created user_id=%d trade_no=%s method=%s amount=%d money=%.2f", id, tradeNo, method, req.Amount, payMoney))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
-			"trade_no": tradeNo,
-			"amount":   amount,
-			"money":    strconv.FormatFloat(payMoney, 'f', 2, 64),
-			"pay_info": getOfflinePayInfo(),
+			"trade_no":       tradeNo,
+			"amount":         amount,
+			"money":          strconv.FormatFloat(payMoney, 'f', 2, 64),
+			"payment_method": method,
+			"pay_info":       offlinePayInfo(method),
 		},
 	})
 }

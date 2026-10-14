@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 import { isApiSuccess, submitOfflinePayNote } from '../../api'
+import { PAYMENT_TYPES } from '../../constants'
 import type { OfflineOrder } from '../../types'
 
 interface OfflinePayDialogProps {
@@ -68,6 +69,9 @@ export function OfflinePayDialog({
   const note = info.tip || info.remark || info.text
   const qrImage = info[QR_IMAGE_KEY] ?? ''
   const isQrImage = /^(https?:\/\/|data:image\/)/.test(qrImage)
+  // QR payment and bank transfer settle through the same manual review flow and
+  // differ only in how the payer sends the money.
+  const isQrPayment = order?.payment_method === PAYMENT_TYPES.OFFLINE_QR
   const orderedKeys = [
     ...FIELD_ORDER.filter((key) => info[key]),
     ...Object.keys(info).filter(
@@ -110,9 +114,11 @@ export function OfflinePayDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t('Corporate bank transfer')}
+      title={
+        isQrPayment ? t('Scan to pay') : t('Corporate bank transfer')
+      }
       description={
-        isQrImage
+        isQrPayment
           ? t(
               'Pay the exact amount below, then wait for an administrator to review the order and credit your balance.'
             )
@@ -126,7 +132,9 @@ export function OfflinePayDialog({
       bodyClassName='space-y-4'
       footer={
         <Button onClick={() => onOpenChange(false)}>
-          {t('I have completed the transfer')}
+          {isQrPayment
+            ? t('I have completed the payment')
+            : t('I have completed the transfer')}
         </Button>
       }
     >
@@ -185,7 +193,7 @@ export function OfflinePayDialog({
             value={paymentNote}
             onChange={(e) => setPaymentNote(e.target.value)}
             placeholder={t(
-              'Optional: transfer reference, payer name, or a short remark'
+              'Optional: payment reference, payer name, or a short remark'
             )}
             maxLength={200}
           />
@@ -208,9 +216,13 @@ export function OfflinePayDialog({
         </div>
 
         <p className='text-muted-foreground text-xs'>
-          {t(
-            'After the transfer is received, an administrator will credit your balance. Include the order number in the remark to speed this up.'
-          )}
+          {isQrPayment
+            ? t(
+                'After the payment arrives, an administrator will review the order and credit your balance.'
+              )
+            : t(
+                'After the transfer is received, an administrator will credit your balance. Include the order number in the remark to speed this up.'
+              )}
         </p>
       </div>
     </Dialog>

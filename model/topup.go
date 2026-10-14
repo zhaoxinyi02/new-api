@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -36,7 +37,20 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
 	PaymentMethodOffline      = "offline"
+	// PaymentMethodOfflineQR is the QR-code variant of the offline method: the
+	// payer scans the收款码 shown in the dialog instead of making a bank transfer.
+	PaymentMethodOfflineQR = "offline_qr"
 )
+
+// OfflinePaymentMethods lists the methods that settle through manual review
+// instead of a gateway: corporate bank transfer and QR payment.
+var OfflinePaymentMethods = []string{PaymentMethodOffline, PaymentMethodOfflineQR}
+
+// IsOfflinePaymentMethod reports whether the identifier belongs to the manual
+// offline payment family.
+func IsOfflinePaymentMethod(method string) bool {
+	return slices.Contains(OfflinePaymentMethods, method)
+}
 
 const (
 	PaymentProviderEpay         = "epay"

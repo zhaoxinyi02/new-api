@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createInstance } from 'i18next'
@@ -68,12 +75,36 @@ beforeEach(async () => {
   vi.spyOn(api, 'post').mockResolvedValue({ data: { success: true } })
 })
 
-it('shows the payment note and offline review actions for pending orders', async () => {
+/**
+ * The order details button is a typed route link, so the dialog needs a router
+ * context. The order route is stubbed: this suite only asserts the navigation.
+ */
+function renderDialog() {
+  const root = createRootRoute()
+  const walletRoute = createRoute({
+    getParentRoute: () => root,
+    path: '/wallet',
+    component: () => <BillingHistoryDialog open onOpenChange={vi.fn()} />,
+  })
+  const orderRoute = createRoute({
+    getParentRoute: () => root,
+    path: '/wallet/order/$tradeNo',
+    component: () => null,
+  })
+  const router = createRouter({
+    routeTree: root.addChildren([walletRoute, orderRoute]),
+    history: createMemoryHistory({ initialEntries: ['/wallet'] }),
+  })
   render(
     <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog open onOpenChange={vi.fn()} />
+      <RouterProvider router={router} />
     </I18nextProvider>
   )
+  return router
+}
+
+it('shows the payment note and offline review actions for pending orders', async () => {
+  renderDialog()
   expect(await screen.findByText('微信流水 12345')).toBeVisible()
   expect(screen.getByRole('button', { name: '通过' })).toBeVisible()
   expect(screen.getByRole('button', { name: '拒绝' })).toBeVisible()
@@ -82,18 +113,12 @@ it('shows the payment note and offline review actions for pending orders', async
 
 it('rejects an offline order through the reject endpoint after confirmation', async () => {
   const user = userEvent.setup()
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog open onOpenChange={vi.fn()} />
-    </I18nextProvider>
-  )
+  renderDialog()
   await screen.findByText('OFF-review-1')
 
   await user.click(screen.getByRole('button', { name: '拒绝' }))
   const confirmDialog = screen.getByRole('alertdialog')
-  expect(
-    within(confirmDialog).getByText(/不会到账/)
-  ).toBeVisible()
+  expect(within(confirmDialog).getByText(/不会到账/)).toBeVisible()
 
   const rejectButtons = within(confirmDialog).getAllByRole('button', {
     name: '拒绝',
@@ -111,11 +136,7 @@ it('rejects an offline order through the reject endpoint after confirmation', as
 
 it('completes a pending order through the complete endpoint after confirmation', async () => {
   const user = userEvent.setup()
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog open onOpenChange={vi.fn()} />
-    </I18nextProvider>
-  )
+  renderDialog()
   await screen.findByText('OFF-review-1')
 
   await user.click(screen.getByRole('button', { name: '通过' }))
@@ -130,15 +151,7 @@ it('completes a pending order through the complete endpoint after confirmation',
 })
 
 it('labels a QR order as scan-to-pay and shows its payment time', async () => {
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog
-        open
-        onOpenChange={vi.fn()}
-        currentUser={{ id: 8, username: 'lansuan' }}
-      />
-    </I18nextProvider>
-  )
+  renderDialog()
   await screen.findByText('OFF-review-3')
 
   expect(screen.getByText('扫码付款')).toBeVisible()
@@ -147,46 +160,18 @@ it('labels a QR order as scan-to-pay and shows its payment time', async () => {
   expect(screen.getAllByText('支付时间')).toHaveLength(1)
 })
 
-it('opens the order receipt with payer, method and amount', async () => {
+it('opens the standalone order detail page from the details button', async () => {
   const user = userEvent.setup()
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog
-        open
-        onOpenChange={vi.fn()}
-        currentUser={{ id: 8, username: 'lansuan' }}
-      />
-    </I18nextProvider>
-  )
+  const router = renderDialog()
   await screen.findByText('OFF-review-3')
 
-  await user.click(screen.getByRole('button', { name: '详情 OFF-review-3' }))
+  // The details control is a Button primitive rendered as a router Link, so it
+  // keeps the button role and exposes the order URL as its href.
+  const details = screen.getByRole('button', { name: '详情 OFF-review-3' })
+  expect(details).toHaveAttribute('href', '/wallet/order/OFF-review-3')
 
-  const receipt = await screen.findByRole('dialog', { name: '订单详情' })
-  expect(within(receipt).getByText('OFF-review-3')).toBeVisible()
-  expect(within(receipt).getByText('支付方')).toBeVisible()
-  expect(within(receipt).getByText('用户 ID: 7')).toBeVisible()
-  expect(within(receipt).getByText('扫码付款')).toBeVisible()
-  // The receipt amount is formatted with the active display currency, so only
-  // the value itself is part of the contract here.
-  expect(within(receipt).getAllByText(/[$¥]\s?20/).length).toBeGreaterThan(0)
-})
-
-it('shows the signed-in username as payer for the user\'s own order', async () => {
-  const user = userEvent.setup()
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog
-        open
-        onOpenChange={vi.fn()}
-        currentUser={{ id: 8, username: 'lansuan' }}
-      />
-    </I18nextProvider>
-  )
-  await screen.findByText('OFF-review-1')
-
-  await user.click(screen.getByRole('button', { name: '详情 OFF-review-1' }))
-
-  const receipt = await screen.findByRole('dialog', { name: '订单详情' })
-  expect(within(receipt).getByText('lansuan')).toBeVisible()
+  await user.click(details)
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe('/wallet/order/OFF-review-3')
+  })
 })

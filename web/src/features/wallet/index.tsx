@@ -414,9 +414,6 @@ export function Wallet(props: WalletProps) {
       <BillingHistoryDialog
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
-        currentUser={
-          user ? { id: user.id, username: user.username } : undefined
-        }
       />
 
       <CreemConfirmDialog

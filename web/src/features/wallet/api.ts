@@ -42,6 +42,7 @@ import type {
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
   OfflinePaymentResponse,
+  TopupOrderDetailResponse,
 } from './types'
 
 // ============================================================================
@@ -122,6 +123,17 @@ export async function requestPayment(
     ...res.data,
     url: res.data.url || (res as unknown as { url?: string }).url,
   }
+}
+
+/**
+ * Get one top-up order for the order detail page. The order owner can read
+ * their own order; administrators can read any order.
+ */
+export async function getTopupOrderDetail(
+  tradeNo: string
+): Promise<TopupOrderDetailResponse> {
+  const res = await api.get(`/api/user/topup/${encodeURIComponent(tradeNo)}`)
+  return res.data
 }
 
 /**

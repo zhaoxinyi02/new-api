@@ -405,6 +405,17 @@ func offlinePayInfo(method string) map[string]string {
 	return readPayInfoEnv(offlinePayInfoEnv)
 }
 
+// paymentSellerName is the legal entity behind the收款信息 (the account holder),
+// shown as the seller on an order receipt. Empty when no收款信息 is configured.
+func paymentSellerName() string {
+	for _, method := range model.OfflinePaymentMethods {
+		if holder := offlinePayInfo(method)["holder"]; holder != "" {
+			return holder
+		}
+	}
+	return ""
+}
+
 type OfflinePayRequest struct {
 	Amount int64 `json:"amount"`
 	// PaymentMethod selects the offline variant: offline (bank transfer) or
@@ -664,6 +675,37 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
+}
+
+// GetTopUpDetail returns a single top-up order for the order detail page. The
+// order owner can read their own order; administrator roles can read any order,
+// matching the admin billing list that already shows every order.
+func GetTopUpDetail(c *gin.Context) {
+	tradeNo := strings.TrimSpace(c.Param("trade_no"))
+	if tradeNo == "" {
+		common.ApiErrorMsg(c, "Invalid parameters")
+		return
+	}
+	topUp := model.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil {
+		common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Order not found"))
+		return
+	}
+	userId := c.GetInt("id")
+	if topUp.UserId != userId && c.GetInt("role") < common.RoleAdminUser {
+		common.ApiErrorStatus(c, http.StatusForbidden, common.NewMessage("You can only view your own orders"))
+		return
+	}
+
+	payer := ""
+	if user, err := model.GetUserById(topUp.UserId, false); err == nil {
+		payer = user.Username
+	}
+	common.ApiSuccess(c, gin.H{
+		"order":  topUp,
+		"payer":  payer,
+		"seller": paymentSellerName(),
+	})
 }
 
 func GetUserTopUps(c *gin.Context) {

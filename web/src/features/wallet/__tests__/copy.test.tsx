@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -30,6 +37,33 @@ import { RechargeFormCard } from '../components/recharge-form-card'
 
 const i18n = createInstance()
 
+/**
+ * The dialog links each order to the standalone detail page, so it needs a
+ * router context even in tests that only assert its labels.
+ */
+function renderBillingHistory(instance: typeof i18n) {
+  const root = createRootRoute()
+  const walletRoute = createRoute({
+    getParentRoute: () => root,
+    path: '/wallet',
+    component: () => <BillingHistoryDialog open onOpenChange={vi.fn()} />,
+  })
+  const orderRoute = createRoute({
+    getParentRoute: () => root,
+    path: '/wallet/order/$tradeNo',
+    component: () => null,
+  })
+  const router = createRouter({
+    routeTree: root.addChildren([walletRoute, orderRoute]),
+    history: createMemoryHistory({ initialEntries: ['/wallet'] }),
+  })
+  render(
+    <I18nextProvider i18n={instance}>
+      <RouterProvider router={router} />
+    </I18nextProvider>
+  )
+}
+
 beforeEach(async () => {
   await i18n.use(initReactI18next).init({
     lng: 'zh',
@@ -58,11 +92,7 @@ it('translates billing history statuses and updates them when the language chang
       },
     },
   })
-  render(
-    <I18nextProvider i18n={i18n}>
-      <BillingHistoryDialog open onOpenChange={vi.fn()} />
-    </I18nextProvider>
-  )
+  renderBillingHistory(i18n)
   await screen.findByText('order-0')
   for (const label of ['成功', '待确认', '已过期']) {
     expect(screen.getByText(label)).toBeVisible()

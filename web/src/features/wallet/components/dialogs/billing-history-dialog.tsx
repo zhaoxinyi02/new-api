@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -54,20 +55,15 @@ import {
   getPaymentMethodName,
   formatTimestamp,
 } from '../../lib/billing'
-import type { TopupRecord } from '../../types'
-import { OrderDetailDialog } from './order-detail-dialog'
 
 interface BillingHistoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Signed-in account, used as the payer shown in the order detail receipt. */
-  currentUser?: { id: number; username: string }
 }
 
 export function BillingHistoryDialog({
   open,
   onOpenChange,
-  currentUser,
 }: BillingHistoryDialogProps) {
   const { t } = useTranslation()
   const {
@@ -94,15 +90,6 @@ export function BillingHistoryDialog({
     action: 'approve' | 'reject'
   } | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
-  const [detailRecord, setDetailRecord] = useState<TopupRecord | null>(null)
-
-  let detailPayer = ''
-  if (detailRecord) {
-    const isOwnOrder = detailRecord.user_id === currentUser?.id
-    detailPayer = isOwnOrder
-      ? (currentUser?.username ?? '')
-      : `${t('User ID')}: ${detailRecord.user_id}`
-  }
 
   const totalPages = Math.ceil(total / pageSize)
   const isRejectConfirm = confirm?.action === 'reject'
@@ -354,7 +341,12 @@ export function BillingHistoryDialog({
                           size='sm'
                           variant='ghost'
                           aria-label={`${t('Details')} ${record.trade_no}`}
-                          onClick={() => setDetailRecord(record)}
+                          render={
+                            <Link
+                              to='/wallet/order/$tradeNo'
+                              params={{ tradeNo: record.trade_no }}
+                            />
+                          }
                         >
                           {t('Details')}
                         </Button>
@@ -439,13 +431,6 @@ export function BillingHistoryDialog({
           )}
         </div>
       </Dialog>
-
-      <OrderDetailDialog
-        open={!!detailRecord}
-        onOpenChange={(open) => !open && setDetailRecord(null)}
-        record={detailRecord}
-        payer={detailPayer}
-      />
 
       {/* Confirm Approve / Reject Order Dialog */}
       <AlertDialog

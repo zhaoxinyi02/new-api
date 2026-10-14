@@ -315,3 +315,18 @@ export interface OfflinePayNoteRequest {
   trade_no: string
   note: string
 }
+
+/**
+ * Single top-up order receipt. The payer and the seller are resolved on the
+ * server, because an administrator can open any order while a regular user only
+ * sees their own.
+ */
+export interface TopupOrderDetail {
+  order: TopupRecord
+  /** Username of the account that placed the order */
+  payer: string
+  /** Legal entity behind the configured payment information */
+  seller: string
+}
+
+export type TopupOrderDetailResponse = ApiResponse<TopupOrderDetail>

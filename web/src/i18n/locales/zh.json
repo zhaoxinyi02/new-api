@@ -3,6 +3,8 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "CNY per credit unit": "每 1 单位额度折合人民币（元）",
+    "How many CNY one credit unit is worth (display only; 1 means no conversion)": "每 1 单位额度折合多少人民币（仅影响展示；填 1 表示不换算）",
     "_copy": "_复制",
     "，": "，",
     ", and": "，和",

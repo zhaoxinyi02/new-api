@@ -237,10 +237,8 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                   <FormItem>
                     <FormLabel>
                       {displayType === 'CNY'
-                        ? t('CNY per USD')
-                        : displayType === 'USD'
-                          ? t('USD Exchange Rate')
-                          : t('USD Exchange Rate')}
+                        ? t('CNY per credit unit')
+                        : t('USD Exchange Rate')}
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -250,9 +248,13 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      {t(
-                        'Real exchange rate between USD and your payment gateway currency'
-                      )}
+                      {displayType === 'CNY'
+                        ? t(
+                            'How many CNY one credit unit is worth (display only; 1 means no conversion)'
+                          )
+                        : t(
+                            'Real exchange rate between USD and your payment gateway currency'
+                          )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

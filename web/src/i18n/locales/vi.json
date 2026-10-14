@@ -3,6 +3,8 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "CNY per credit unit": "CNY cho mỗi đơn vị tín dụng",
+    "How many CNY one credit unit is worth (display only; 1 means no conversion)": "Một đơn vị tín dụng đáng bao nhiêu CNY (chỉ để hiển thị; 1 nghĩa là không quy đổi)",
     "_copy": "_bản sao",
     "，": ", ",
     ", and": ", và",

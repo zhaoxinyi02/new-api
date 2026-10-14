@@ -3,6 +3,8 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "CNY per credit unit": "CNY per credit unit",
+    "How many CNY one credit unit is worth (display only; 1 means no conversion)": "How many CNY one credit unit is worth (display only; 1 means no conversion)",
     "_copy": "_copy",
     "，": ", ",
     ", and": ", and",

@@ -34,9 +34,25 @@ import type { Channel, ChannelSettings, ChannelOtherSettings } from '../types'
 // ============================================================================
 
 /**
+ * Volcano Engine Ark Agent Plan is OpenAI-compatible (type 1) but should be
+ * branded as Volcengine, not OpenAI. Detected via the channel base URL.
+ */
+export function isArkAgentPlanBase(baseURL?: string | null): boolean {
+  if (!baseURL) {
+    return false
+  }
+  return (
+    baseURL.includes('ark.cn-beijing.volces.com') || baseURL.includes('/api/plan')
+  )
+}
+
+/**
  * Get human-readable channel type label
  */
-export function getChannelTypeLabel(type: number): string {
+export function getChannelTypeLabel(type: number, baseURL?: string | null): string {
+  if (type === 1 && isArkAgentPlanBase(baseURL)) {
+    return 'Volcengine Ark'
+  }
   return CHANNEL_TYPES[type as keyof typeof CHANNEL_TYPES] || 'Unknown'
 }
 
@@ -44,7 +60,10 @@ export function getChannelTypeLabel(type: number): string {
  * Get channel type icon name for getLobeIcon
  * Maps channel types to Lobe icon names using type number (language-independent)
  */
-export function getChannelTypeIcon(type: number): string {
+export function getChannelTypeIcon(type: number, baseURL?: string | null): string {
+  if (type === 1 && isArkAgentPlanBase(baseURL)) {
+    return 'Doubao'
+  }
   const TYPE_TO_ICON: Record<number, string> = {
     // OpenAI family
     1: 'OpenAI', // OpenAI

@@ -4818,6 +4818,7 @@ export function ChannelMutateDrawer({
                         <ChannelTypeLogo
                           type={currentType}
                           plugin={boundTaskPlugin}
+                          baseURL={currentBaseUrl}
                           size={18}
                         />
                       )}

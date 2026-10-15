@@ -39,7 +39,7 @@ import {
   supportsNewAPIUpstream,
 } from '../channel-plugin-extensions'
 import { getChannelTypeConfig } from '../channel-type-config'
-import { getChannelTypeIcon, getKeyPromptForType } from '../channel-utils'
+import { getChannelTypeIcon, getChannelTypeLabel, getKeyPromptForType } from '../channel-utils'
 
 function newAPIForm(baseUrl: string) {
   return {
@@ -256,5 +256,23 @@ describe('New API channel task plugin extensions', () => {
     expect(JSON.parse(openai.channel.setting ?? '{}')).not.toHaveProperty(
       'task_extend_plugin_keys'
     )
+  })
+})
+
+describe('Volcano Engine Ark Agent Plan branding (type 1 + ark base URL)', () => {
+  const arkBase = 'https://ark.cn-beijing.volces.com/api/plan'
+
+  test('brands ark plan channels as Volcengine Ark with the Doubao icon', () => {
+    expect(getChannelTypeIcon(1, arkBase)).toBe('Doubao')
+    expect(getChannelTypeLabel(1, arkBase)).toBe('Volcengine Ark')
+  })
+
+  test('keeps plain OpenAI channels unchanged', () => {
+    expect(getChannelTypeIcon(1, 'https://api-direct.ccapi.us')).toBe('OpenAI')
+    expect(getChannelTypeLabel(1, 'https://api-direct.ccapi.us')).toBe('OpenAI')
+  })
+
+  test('does not treat unrelated hosts containing /api/plan as ark', () => {
+    expect(getChannelTypeIcon(1, 'https://example.com/api/plan')).toBe('Doubao')
   })
 })

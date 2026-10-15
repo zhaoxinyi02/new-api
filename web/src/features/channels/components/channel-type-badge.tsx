@@ -43,6 +43,7 @@ export function ChannelTypeLogo(props: {
   plugin?: PluginIconInput
   size?: number
   className?: string
+  baseURL?: string | null
 }) {
   const size = props.size ?? 16
   if (props.type === CHANNEL_TYPE_TASK_PLUGIN && props.plugin) {
@@ -63,7 +64,7 @@ export function ChannelTypeLogo(props: {
   }
   return (
     <span className={cn('inline-flex shrink-0', props.className)}>
-      {getLobeIcon(`${getChannelTypeIcon(props.type)}.Color`, size)}
+      {getLobeIcon(`${getChannelTypeIcon(props.type, props.baseURL)}.Color`, size)}
     </span>
   )
 }

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { usePricingData } from '@/features/pricing/hooks'
+
 interface CounterProps {
   end: number
   suffix?: string
@@ -96,12 +98,16 @@ interface StatItem {
 
 export function Stats(_props: StatsProps) {
   const { t } = useTranslation()
+  // 模型数是实时数据：拉不到公开价目表时就不显示这一项，不写死数字。
+  const { models } = usePricingData()
 
   const stats: StatItem[] = [
-    { end: 50, suffix: '+', label: t('upstream services integrated') },
-    { end: 100, suffix: '+', label: t('model billing support') },
-    { end: 50, suffix: '+', label: t('compatible API routes') },
-    { end: 10, suffix: '+', label: t('scheduling controls') },
+    ...(models.length > 0
+      ? [{ end: models.length, suffix: '', label: t('Models available') }]
+      : []),
+    { end: 1, suffix: '', label: t('key for every model') },
+    { end: 2, suffix: '', label: t('offline payment methods: QR code / bank transfer') },
+    { end: 365, suffix: '', label: t('days of usage logs') },
   ]
 
   return (

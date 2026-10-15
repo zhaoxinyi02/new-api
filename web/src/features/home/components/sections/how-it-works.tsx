@@ -16,36 +16,42 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Settings, Zap, BarChart3 } from 'lucide-react'
+import { UserPlus, Wallet, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { AnimateInView } from '@/components/animate-in-view'
+import { useStatus } from '@/hooks/use-status'
 
 export function HowItWorks() {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const baseUrl = `${String(status?.server_address || '').replace(/\/+$/, '')}/v1`
 
   const steps = [
     {
       num: '1',
-      title: t('Configure'),
+      title: t('Register'),
       desc: t(
-        'Add your API keys, set up channels and configure access permissions'
+        'Sign up with an email or username; the console shows your balance and plans right away.'
       ),
-      icon: <Settings className='size-6' strokeWidth={1.5} />,
+      icon: <UserPlus className='size-6' strokeWidth={1.5} />,
     },
     {
       num: '2',
-      title: t('Connect'),
+      title: t('Top up or buy a plan'),
       desc: t(
-        'Connect through OpenAI, Claude, Gemini, and other compatible API routes'
+        'Pay by QR code or bank transfer and the administrator confirms it; the balance or the plan arrives at once.'
       ),
-      icon: <Zap className='size-6' strokeWidth={1.5} />,
+      icon: <Wallet className='size-6' strokeWidth={1.5} />,
     },
     {
       num: '3',
-      title: t('Monitor'),
-      desc: t('Track usage, costs and performance with real-time analytics'),
-      icon: <BarChart3 className='size-6' strokeWidth={1.5} />,
+      title: t('Create a token and call'),
+      desc: t(
+        'Create an API token and point your client at {{baseUrl}} — OpenAI-compatible endpoints, nothing else to change.',
+        { baseUrl }
+      ),
+      icon: <KeyRound className='size-6' strokeWidth={1.5} />,
     },
   ]
 
@@ -57,7 +63,7 @@ export function HowItWorks() {
             {t('How It Works')}
           </p>
           <h2 className='text-2xl font-bold tracking-tight md:text-3xl'>
-            {t('Three steps to get started')}
+            {t('Start calling in three steps')}
           </h2>
         </AnimateInView>
 

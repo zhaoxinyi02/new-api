@@ -41,15 +41,15 @@ export function Features(_props: FeaturesProps) {
     {
       id: 'fast',
       num: '01',
-      title: t('Lightning Fast'),
+      title: t('Model Aggregation'),
       desc: t(
-        'Optimized network architecture ensures millisecond response times'
+        'GPT, Claude, Gemini, DeepSeek, Qwen, Doubao and more — one key, one bill, one usage log.'
       ),
       span: 'md:col-span-2',
       icon: <Zap className='size-4 text-blue-400' />,
       visual: (
         <div className='mt-4 grid grid-cols-3 gap-2'>
-          {['OpenAI', 'Claude', 'Gemini', 'DeepSeek', 'Qwen', 'Llama'].map(
+          {['OpenAI', 'Claude', 'Gemini', 'DeepSeek', 'Qwen', 'Doubao'].map(
             (name) => (
               <div
                 key={name}
@@ -67,7 +67,7 @@ export function Features(_props: FeaturesProps) {
       num: '02',
       title: t('Secure & Reliable'),
       desc: t(
-        'Enterprise-grade security with comprehensive permission management'
+        'Multi-channel routing with automatic failover, per-token quota limits and full account control.'
       ),
       span: 'md:col-span-1',
       icon: <Shield className='size-4 text-emerald-400' />,
@@ -102,8 +102,8 @@ export function Features(_props: FeaturesProps) {
     {
       id: 'global',
       num: '03',
-      title: t('Global Coverage'),
-      desc: t('Multi-region deployment for stable global access'),
+      title: t('Smart Scheduling'),
+      desc: t('Load balancing across channels, rate limiting and cost tracking built in.'),
       span: 'md:col-span-1',
       icon: <Globe className='size-4 text-violet-400' />,
       visual: (
@@ -132,7 +132,7 @@ export function Features(_props: FeaturesProps) {
       id: 'developer',
       num: '04',
       title: t('Developer Friendly'),
-      desc: t('Compatible API routes for common AI application workflows'),
+      desc: t('Multi-protocol compatible: keep your OpenAI SDK and switch only the base_url.'),
       span: 'md:col-span-2',
       icon: <Code className='size-4 text-amber-400' />,
       visual: (
@@ -159,23 +159,23 @@ export function Features(_props: FeaturesProps) {
   const additionalFeatures = [
     {
       icon: <Gauge className='size-5' strokeWidth={1.5} />,
-      title: t('High Performance'),
-      desc: t('Support for high concurrency with automatic load balancing'),
+      title: t('High Concurrency'),
+      desc: t('Concurrency limits per token and per user keep bursts predictable.'),
     },
     {
       icon: <DollarSign className='size-5' strokeWidth={1.5} />,
       title: t('Transparent Billing'),
-      desc: t('Pay-as-you-go with real-time usage monitoring'),
+      desc: t('Pay-as-you-go with real-time balance and per-request usage logs.'),
     },
     {
       icon: <Users className='size-5' strokeWidth={1.5} />,
-      title: t('Team Collaboration'),
-      desc: t('Multi-user management with flexible permission allocation'),
+      title: t('Plans & Top-up'),
+      desc: t('Top up by QR code or bank transfer, or buy a monthly plan with a fixed quota for the period.'),
     },
     {
       icon: <HeartHandshake className='size-5' strokeWidth={1.5} />,
-      title: t('Open Source'),
-      desc: t('Community driven, self-hosted, and extensible'),
+      title: t('Teams & Groups'),
+      desc: t('Multiple users and model groups with quotas and permissions managed separately.'),
     },
   ]
 
@@ -187,9 +187,9 @@ export function Features(_props: FeaturesProps) {
             {t('Core Features')}
           </p>
           <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-3xl'>
-            {t('Built for developers,')}
+            {t('Everything you need to get started')}
             <br />
-            {t('designed for scale')}
+            {t('for a paid AI API service')}
           </h2>
         </AnimateInView>
 

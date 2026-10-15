@@ -1,12 +1,17 @@
 package common
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	armorsetting "github.com/QuantumNous/new-api/setting/armor_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -30,6 +35,7 @@ func armorTestSetting(t *testing.T, mutate func(cfg *armorsetting.ArmorSetting))
 	cfg.PromptsByModel = nil
 	cfg.MaxBodyBytes = 0
 	cfg.InjectPromptField = false
+	cfg.ApplyToStandardPaths = false
 	// 系统位注入与收尾强制指令分开验证：默认这条基线只测系统位。
 	cfg.EnforceTail = false
 	cfg.EnforceTailText = ""
@@ -468,4 +474,45 @@ func TestArmorInjectEnforcementPrefix(t *testing.T) {
 		assert.Equal(t, "assistant", messages[len(messages)-1].Role)
 		assert.Equal(t, "CUSTOM-PREFIX", messages[len(messages)-1].Content)
 	})
+}
+
+// TestArmorInjectOutboundRequestRespectsLine 线路分流：破甲只走打标记的专用线路，
+// 普通线路默认不注入（不给每个请求白送六千多 token 输入）。
+func TestArmorInjectOutboundRequestRespectsLine(t *testing.T) {
+	const body = `{"model":"armor-line-model","messages":[{"role":"user","content":"hi"}]}`
+
+	cases := []struct {
+		name          string
+		armorLine     bool
+		standardPaths bool
+		wantInjected  bool
+	}{
+		{name: "armor line injects", armorLine: true, wantInjected: true},
+		{name: "standard path skips", wantInjected: false},
+		{name: "standard path injects when explicitly enabled", standardPaths: true, wantInjected: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) {
+				cfg.ApplyToStandardPaths = tc.standardPaths
+			})
+
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			if tc.armorLine {
+				ctx.Set(armorsetting.ContextKey, true)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte(body)))
+			req.Header.Set("Content-Type", "application/json")
+
+			injected, err := ArmorInjectOutboundRequest(ctx, req, armorTestInfo("armor-line-model", types.RelayFormatOpenAI))
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantInjected, injected)
+
+			raw, err := io.ReadAll(req.Body)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantInjected, strings.Contains(string(raw), armorTestPrompt))
+		})
+	}
 }

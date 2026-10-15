@@ -18,30 +18,7 @@ func SetRelayRouter(router *gin.Engine) {
 	router.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	router.Use(middleware.StatsMiddleware())
 	// https://platform.openai.com/docs/api-reference/introduction
-	modelsRouter := router.Group("/v1/models")
-	modelsRouter.Use(middleware.RouteTag("relay"))
-	modelsRouter.Use(middleware.TokenAuth())
-	{
-		modelsRouter.GET("", func(c *gin.Context) {
-			switch {
-			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
-				controller.ListModels(c, constant.ChannelTypeAnthropic)
-			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "": // 单独的适配
-				controller.ListModels(c, constant.ChannelTypeGemini)
-			default:
-				controller.ListModels(c, constant.ChannelTypeOpenAI)
-			}
-		})
-
-		modelsRouter.GET("/:model", func(c *gin.Context) {
-			switch {
-			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
-				controller.RetrieveModel(c, constant.ChannelTypeAnthropic)
-			default:
-				controller.RetrieveModel(c, constant.ChannelTypeOpenAI)
-			}
-		})
-	}
+	registerModelsRouterGroup(router.Group("/v1/models"))
 
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))
@@ -86,9 +63,118 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatOpenAIRealtime)
 		})
 	}
+	registerRelayHTTPRouterGroup(relayV1Router)
+
+	// 破甲专用线路：路径与 /v1 完全同构，唯一区别是 ArmorLine 中间件打了破甲标记，
+	// 注入收口只对带标记的请求注入破甲提示词。线路本身不出现在任何前端页面
+	// （options.api_info、模型端点映射、首页示例都不写它），用户侧无从察觉。
+	relayV2Router := router.Group(middleware.ArmorLinePrefix)
+	relayV2Router.Use(middleware.ArmorLine())
+	relayV2Router.Use(middleware.RouteTag("relay"))
+	relayV2Router.Use(middleware.SystemPerformanceCheck())
+	relayV2Router.Use(middleware.TokenAuth())
+	{
+		relayV2Router.GET("/responses", controller.ResponsesWebSocket)
+	}
+	relayV2Router.Use(middleware.ModelRequestRateLimit())
+	{
+		v2WsRouter := relayV2Router.Group("")
+		v2WsRouter.Use(middleware.Distribute())
+		v2WsRouter.GET("/realtime", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAIRealtime)
+		})
+	}
+	registerModelsRouterGroup(router.Group(middleware.ArmorLinePrefix + "/models"))
+	registerRelayHTTPRouterGroup(relayV2Router)
+	relayMjRouter := router.Group("/mj")
+	relayMjRouter.Use(middleware.RouteTag("relay"))
+	relayMjRouter.Use(middleware.SystemPerformanceCheck())
+	registerMjRouterGroup(relayMjRouter)
+
+	relayMjModeRouter := router.Group("/:mode/mj")
+	relayMjModeRouter.Use(middleware.RouteTag("relay"))
+	relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
+	registerMjRouterGroup(relayMjModeRouter)
+	//relayMjRouter.Use()
+
+	relayGeminiRouter := router.Group("/v1beta")
+	// :countTokens is not implemented. Answer it like an unregistered route
+	// before auth/channel selection instead of silently relaying it as
+	// generateContent (#7283).
+	relayGeminiRouter.Use(func(c *gin.Context) {
+		if strings.HasSuffix(c.Request.URL.Path, ":countTokens") {
+			controller.RelayNotFound(c)
+			c.Abort()
+		}
+	})
+	relayGeminiRouter.Use(middleware.RouteTag("relay"))
+	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
+	relayGeminiRouter.Use(middleware.TokenAuth())
+	relayGeminiRouter.Use(middleware.ModelRequestRateLimit())
+	relayGeminiRouter.Use(middleware.Distribute())
+	{
+		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
+		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatGemini)
+		})
+	}
+}
+
+func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
+	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
+	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	{
+		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
+		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
+		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
+		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
+		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
+		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
+	}
+}
+
+// registerModelsRouterGroup 注册 OpenAI 风格 /models 列表与详情（/v1/models、/v2/models 共用）。
+func registerModelsRouterGroup(modelsRouter *gin.RouterGroup) {
+	modelsRouter.Use(middleware.RouteTag("relay"))
+	modelsRouter.Use(middleware.TokenAuth())
+	{
+		modelsRouter.GET("", func(c *gin.Context) {
+			switch {
+			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
+				controller.ListModels(c, constant.ChannelTypeAnthropic)
+			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "": // 单独的适配
+				controller.ListModels(c, constant.ChannelTypeGemini)
+			default:
+				controller.ListModels(c, constant.ChannelTypeOpenAI)
+			}
+		})
+
+		modelsRouter.GET("/:model", func(c *gin.Context) {
+			switch {
+			case c.GetHeader("x-api-key") != "" && c.GetHeader("anthropic-version") != "":
+				controller.RetrieveModel(c, constant.ChannelTypeAnthropic)
+			default:
+				controller.RetrieveModel(c, constant.ChannelTypeOpenAI)
+			}
+		})
+	}
+}
+
+// registerRelayHTTPRouterGroup 注册 /v1、/v2 共用的 HTTP 中继路由（协议族全部一致）。
+func registerRelayHTTPRouterGroup(relayRouter *gin.RouterGroup) {
 	{
 		//http router
-		httpRouter := relayV1Router.Group("")
+		httpRouter := relayRouter.Group("")
 		httpRouter.Use(middleware.Distribute())
 
 		// claude related routes
@@ -171,60 +257,5 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.GET("/fine-tunes/:id/events", controller.RelayNotImplemented)
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
-
-	relayMjRouter := router.Group("/mj")
-	relayMjRouter.Use(middleware.RouteTag("relay"))
-	relayMjRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjRouter)
-
-	relayMjModeRouter := router.Group("/:mode/mj")
-	relayMjModeRouter.Use(middleware.RouteTag("relay"))
-	relayMjModeRouter.Use(middleware.SystemPerformanceCheck())
-	registerMjRouterGroup(relayMjModeRouter)
-	//relayMjRouter.Use()
-
-	relayGeminiRouter := router.Group("/v1beta")
-	// :countTokens is not implemented. Answer it like an unregistered route
-	// before auth/channel selection instead of silently relaying it as
-	// generateContent (#7283).
-	relayGeminiRouter.Use(func(c *gin.Context) {
-		if strings.HasSuffix(c.Request.URL.Path, ":countTokens") {
-			controller.RelayNotFound(c)
-			c.Abort()
-		}
-	})
-	relayGeminiRouter.Use(middleware.RouteTag("relay"))
-	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
-	relayGeminiRouter.Use(middleware.TokenAuth())
-	relayGeminiRouter.Use(middleware.ModelRequestRateLimit())
-	relayGeminiRouter.Use(middleware.Distribute())
-	{
-		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
-		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatGemini)
-		})
-	}
 }
 
-func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
-	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
-	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
-	{
-		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
-		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
-		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
-		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
-		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
-		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
-	}
-}

@@ -61,6 +61,15 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 			path:          "/v1/models?key=modelstestkey",
 			expectedField: "models",
 		},
+		{
+			// 破甲专用线路与普通线路同构：/v2/models 也必须能正常列模型，
+			// 且中间件把路径归一化成 /v1 语义后不影响任何一条下游逻辑。
+			name:           "armor line models",
+			path:           "/v2/models",
+			headerName:     "Authorization",
+			expectedObject: "list",
+			expectedField:  "data",
+		},
 	}
 
 	for _, test := range tests {

@@ -442,6 +442,12 @@ func ArmorInjectOutboundRequest(c *gin.Context, req *http.Request, info *RelayIn
 	if cfg == nil || !cfg.Enabled || req == nil || req.Body == nil {
 		return false, nil
 	}
+	// 线路分流：破甲只走专用线路（/v2，中间件打标记）。普通线路（/v1 等）
+	// 默认不注入 —— 每个请求白送六千多 token 输入的成本不该算在普通调用上。
+	// 想恢复全站破甲，把 armor_setting.apply_to_standard_paths 改成 true。
+	if !cfg.ApplyToStandardPaths && (c == nil || !c.GetBool(armorsetting.ContextKey)) {
+		return false, nil
+	}
 	if contentType := strings.ToLower(req.Header.Get("Content-Type")); contentType != "" && !strings.Contains(contentType, "json") {
 		// multipart（语音、图像编辑）等非 JSON 出口不做文本注入。
 		return false, nil

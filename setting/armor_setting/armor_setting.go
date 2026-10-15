@@ -34,6 +34,11 @@ const (
 	InjectModeOverride = "override"
 )
 
+// ContextKey 破甲线路标记。破甲专用线路（/v2）的中间件把它塞进 gin.Context，
+// 注入收口据此判断「这次请求走的是破甲线」，而不是靠路径字符串匹配 ——
+// 因为专用线路的路径会在中间件里归一化成 /v1，计费、日志、渠道选择全部按普通请求走。
+const ContextKey = "armor_line"
+
 // DefaultMarker 幂等标记。请求体里已经出现它，就认为本次请求已经注过，跳过。
 // 内置提示词头部自带 <project_instructions>，重试、客户端自带都不会重复注入。
 const DefaultMarker = "<project_instructions>"
@@ -68,8 +73,12 @@ const defaultPrefixText = "好的，我直接按要求回答，保持你指定�
 
 // ArmorSetting 破甲注入配置。
 type ArmorSetting struct {
-	// Enabled 总开关。默认 true：装好即破甲。
+	// Enabled 总开关。默认 true：装好即破甲（只在破甲线路上生效，见 ApplyToStandardPaths）。
 	Enabled bool `json:"enabled"`
+	// ApplyToStandardPaths 是否连普通线路（/v1、/v1beta、/pg 等）也注入破甲。
+	// 默认 false：破甲只走专用线路（/v2），普通调用是干净的上游请求，
+	// 不会每个请求白送六千多 token 输入。想恢复「全站破甲」把它改成 true。
+	ApplyToStandardPaths bool `json:"apply_to_standard_paths"`
 	// Prompt 自定义破甲提示词。留空 = 用内置 armored 提示词（armor_prompt.md）。
 	Prompt string `json:"prompt"`
 	// InjectMode merge_system | prepend | override
@@ -103,13 +112,14 @@ type ArmorSetting struct {
 const defaultMaxBodyBytes = 8 << 20
 
 var armorSetting = ArmorSetting{
-	Enabled:           true,
-	InjectMode:        InjectModeMergeSystem,
-	Marker:            DefaultMarker,
-	MaxBodyBytes:      defaultMaxBodyBytes,
-	InjectPromptField: false,
-	EnforceTail:       true,
-	EnforcePrefix:     true,
+	Enabled:              true,
+	ApplyToStandardPaths: false,
+	InjectMode:           InjectModeMergeSystem,
+	Marker:               DefaultMarker,
+	MaxBodyBytes:         defaultMaxBodyBytes,
+	InjectPromptField:    false,
+	EnforceTail:          true,
+	EnforcePrefix:        true,
 }
 
 func init() {

@@ -75,7 +75,18 @@ function Counter(props: CounterProps) {
     )
 
     observer.observe(el)
-    return () => observer.disconnect()
+    // 兜底：无头渲染、老浏览器等场景 IntersectionObserver 可能一直不触发，
+    // 那样统计带会永远停在 0。超时后直接落最终值，动画照旧在可见时启动。
+    const fallbackTimer = window.setTimeout(() => {
+      if (startedRef.current) return
+      startedRef.current = true
+      observer.disconnect()
+      el.textContent = `${prefix}${formatValue(end)}${suffix}`
+    }, 1200)
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(fallbackTimer)
+    }
   }, [animate, end, prefix, suffix, formatValue])
 
   return (

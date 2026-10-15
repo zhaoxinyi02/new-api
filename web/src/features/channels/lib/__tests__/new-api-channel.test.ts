@@ -276,3 +276,32 @@ describe('Volcano Engine Ark Agent Plan branding (type 1 + ark base URL)', () =>
     expect(getChannelTypeIcon(1, 'https://example.com/api/plan')).toBe('Doubao')
   })
 })
+
+describe('OpenAI-compatible Claude pools brand as Anthropic', () => {
+  test('brands claude-only ccapi channels as Anthropic with the Claude icon', () => {
+    const models =
+      'claude-fable-5, claude-opus-5, claude-sonnet-5, claude-sonnet-5-5'
+    expect(getChannelTypeIcon(1, 'https://api-direct.ccapi.us', models)).toBe(
+      'Claude'
+    )
+    expect(getChannelTypeLabel(1, 'https://api-direct.ccapi.us', models)).toBe(
+      'Anthropic'
+    )
+  })
+
+  test('keeps gpt ccapi channels as OpenAI', () => {
+    const models = 'codex-auto-review, gpt-5.6-sol, gpt-6-sol'
+    expect(getChannelTypeIcon(1, 'https://api-direct.ccapi.us', models)).toBe(
+      'OpenAI'
+    )
+    expect(getChannelTypeLabel(1, 'https://api-direct.ccapi.us', models)).toBe(
+      'OpenAI'
+    )
+  })
+
+  test('does not brand mixed pools as Anthropic', () => {
+    expect(
+      getChannelTypeIcon(1, 'https://api-direct.ccapi.us', 'claude-sonnet-5,gpt-5.6-sol')
+    ).toBe('OpenAI')
+  })
+})

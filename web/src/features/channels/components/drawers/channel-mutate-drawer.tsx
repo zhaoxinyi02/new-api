@@ -4819,6 +4819,7 @@ export function ChannelMutateDrawer({
                           type={currentType}
                           plugin={boundTaskPlugin}
                           baseURL={currentBaseUrl}
+                          models={formValues.models}
                           size={18}
                         />
                       )}

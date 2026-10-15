@@ -47,11 +47,33 @@ export function isArkAgentPlanBase(baseURL?: string | null): boolean {
 }
 
 /**
+ * OpenAI-compatible relays that only serve Claude models should be branded
+ * as Anthropic (e.g. ccapi Claude pools on channel type 1).
+ */
+export function isClaudeOnlyModelList(models?: string | null): boolean {
+  if (!models) {
+    return false
+  }
+  const names = models
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean)
+  return names.length > 0 && names.every((name) => name.startsWith('claude'))
+}
+
+/**
  * Get human-readable channel type label
  */
-export function getChannelTypeLabel(type: number, baseURL?: string | null): string {
+export function getChannelTypeLabel(
+  type: number,
+  baseURL?: string | null,
+  models?: string | null
+): string {
   if (type === 1 && isArkAgentPlanBase(baseURL)) {
     return 'Volcengine Ark'
+  }
+  if (type === 1 && isClaudeOnlyModelList(models)) {
+    return 'Anthropic'
   }
   return CHANNEL_TYPES[type as keyof typeof CHANNEL_TYPES] || 'Unknown'
 }
@@ -60,9 +82,16 @@ export function getChannelTypeLabel(type: number, baseURL?: string | null): stri
  * Get channel type icon name for getLobeIcon
  * Maps channel types to Lobe icon names using type number (language-independent)
  */
-export function getChannelTypeIcon(type: number, baseURL?: string | null): string {
+export function getChannelTypeIcon(
+  type: number,
+  baseURL?: string | null,
+  models?: string | null
+): string {
   if (type === 1 && isArkAgentPlanBase(baseURL)) {
     return 'Doubao'
+  }
+  if (type === 1 && isClaudeOnlyModelList(models)) {
+    return 'Claude'
   }
   const TYPE_TO_ICON: Record<number, string> = {
     // OpenAI family

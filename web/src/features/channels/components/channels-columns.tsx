@@ -816,9 +816,17 @@ export function useChannelsColumns(
 
           const type = row.getValue('type') as number
           const channel = row.original as Channel
-          const typeNameKey = getChannelTypeLabel(type, channel.base_url)
+          const typeNameKey = getChannelTypeLabel(
+            type,
+            channel.base_url,
+            channel.models
+          )
           const typeName = t(typeNameKey)
-          const iconName = getChannelTypeIcon(type, channel.base_url)
+          const iconName = getChannelTypeIcon(
+            type,
+            channel.base_url,
+            channel.models
+          )
           const isMultiKey = isMultiKeyChannel(channel)
           const multiKeyMode = channel.channel_info?.multi_key_mode ?? 'random'
           const MultiKeyModeIcon =

@@ -18,11 +18,17 @@ var AutomaticDisableStatusCodeRanges = []StatusCodeRange{{Start: 401, End: 401}}
 
 // Default behavior matches legacy hardcoded retry rules in controller/relay.go shouldRetry:
 // retry for 1xx, 3xx, 4xx(except 400/408), 5xx(except 504/524), and no retry for 2xx.
+// 404/413/422 are excluded: the request body itself is the problem (upstream
+// rejects it for every channel), so re-sending the same body elsewhere only
+// multiplies latency and upstream cost.
 var AutomaticRetryStatusCodeRanges = []StatusCodeRange{
 	{Start: 100, End: 199},
 	{Start: 300, End: 399},
-	{Start: 401, End: 407},
-	{Start: 409, End: 499},
+	{Start: 401, End: 403},
+	{Start: 405, End: 407},
+	{Start: 409, End: 412},
+	{Start: 414, End: 421},
+	{Start: 423, End: 499},
 	{Start: 500, End: 503},
 	{Start: 505, End: 523},
 	{Start: 525, End: 599},

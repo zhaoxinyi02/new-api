@@ -24,9 +24,11 @@ type GeneralSetting struct {
 
 // 默认配置
 var generalSetting = GeneralSetting{
-	DocsLink:                   "https://docs.newapi.pro",
-	PingIntervalEnabled:        false,
-	PingIntervalSeconds:        60,
+	DocsLink: "https://docs.newapi.pro",
+	// PingIntervalEnabled 默认 true：破甲线（/v2）注入的请求 TTFT 偏长，
+	// 没有 SSE 保活时客户端/中间设备的 idle socket 会先超时断开并触发客户端重试。
+	PingIntervalEnabled:        true,
+	PingIntervalSeconds:        30,
 	QuotaDisplayType:           QuotaDisplayTypeUSD,
 	CustomCurrencySymbol:       "¤",
 	CustomCurrencyExchangeRate: 1.0,

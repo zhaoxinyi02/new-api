@@ -82,12 +82,12 @@ func ArmorInjectBody(body []byte, info *RelayInfo) ([]byte, bool, error) {
 	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
 		// 顶层 system 是 Claude 形态：system 必须在顶层，不能塞进 messages。
 		if system := gjson.GetBytes(body, "system"); system.Exists() || armorIsClaudeFormat(info) {
-			injected, changed, injectErr = armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
+			injected, changed, injectErr = armorInjectClaudeSystem(body, info, system, prompt, quotedPrompt, mode)
 		} else {
 			injected, changed, injectErr = armorInjectMessages(body, messages.Raw, prompt, quotedPrompt, mode)
 		}
 	} else if system := gjson.GetBytes(body, "system"); system.Exists() {
-		injected, changed, injectErr = armorInjectClaudeSystem(body, system, prompt, quotedPrompt, mode)
+		injected, changed, injectErr = armorInjectClaudeSystem(body, info, system, prompt, quotedPrompt, mode)
 	} else if gjson.GetBytes(body, "contents").Exists() ||
 		gjson.GetBytes(body, "systemInstruction").Exists() ||
 		gjson.GetBytes(body, "system_instruction").Exists() {
@@ -117,7 +117,9 @@ func ArmorInjectBody(body []byte, info *RelayInfo) ([]byte, bool, error) {
 			injected = tailed
 		}
 	}
-	if prefix := armorsetting.EffectivePrefixText(cfg); prefix != "" {
+	if prefix := armorsetting.EffectivePrefixText(cfg); prefix != "" && info.GetRetryIndex() == 0 {
+		// assistant 预填是最容易被部分上游 400 的注入部件；首尝试带全套，
+		// 一旦失败换渠道重试时自动降级为无预填版本，提高重试成功率。
 		prefixed, _, prefixErr := armorAppendPrefix(injected, info, prefix)
 		if prefixErr != nil {
 			return injected, true, prefixErr
@@ -177,14 +179,14 @@ func armorHasPrefixHead(content string, text string) bool {
 func armorAppendTail(body []byte, info *RelayInfo, text string, quoted string) ([]byte, bool, error) {
 	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
 		if gjson.GetBytes(body, "system").Exists() || armorIsClaudeFormat(info) {
-			return armorAppendSystemText(body, "system", text)
+			return armorAppendSystemText(body, info, "system", text)
 		}
 		item := fmt.Sprintf(`{"role":"system","content":%s}`, quoted)
 		out, err := sjson.SetRawBytes(body, "messages", []byte(appendRawArrayElement(messages.Raw, item)))
 		return out, err == nil, err
 	}
 	if gjson.GetBytes(body, "system").Exists() {
-		return armorAppendSystemText(body, "system", text)
+		return armorAppendSystemText(body, info, "system", text)
 	}
 	for _, key := range []string{"systemInstruction", "system_instruction"} {
 		current := gjson.GetBytes(body, key)
@@ -192,7 +194,7 @@ func armorAppendTail(body []byte, info *RelayInfo, text string, quoted string) (
 			continue
 		}
 		if current.Type == gjson.String {
-			return armorAppendSystemText(body, key, text)
+			return armorAppendSystemText(body, info, key, text)
 		}
 		parts := current.Get("parts")
 		if !parts.IsArray() {
@@ -204,21 +206,26 @@ func armorAppendTail(body []byte, info *RelayInfo, text string, quoted string) (
 		return out, err == nil, err
 	}
 	if gjson.GetBytes(body, "instructions").Exists() {
-		return armorAppendSystemText(body, "instructions", text)
+		return armorAppendSystemText(body, info, "instructions", text)
 	}
 	return body, false, nil
 }
 
 // armorAppendSystemText 把文本追加到指定键的末尾（string 拼接，block 数组加一个 text 块）。
-func armorAppendSystemText(body []byte, key string, text string) ([]byte, bool, error) {
+// 仅 Claude 出口的顶层 system 数组走带 cache_control 的 block，避免非 Claude
+// 上游收到未知字段。
+func armorAppendSystemText(body []byte, info *RelayInfo, key string, text string) ([]byte, bool, error) {
 	current := gjson.GetBytes(body, key)
 	if current.IsArray() {
 		quoted, err := common.Marshal(text)
 		if err != nil {
 			return body, false, err
 		}
-		block := fmt.Sprintf(`{"type":"text","text":%s}`, string(quoted))
-		out, setErr := sjson.SetRawBytes(body, key, []byte(appendRawArrayElement(current.Raw, block)))
+		element := fmt.Sprintf(`{"type":"text","text":%s}`, string(quoted))
+		if key == "system" && armorIsClaudeFormat(info) {
+			element = claudeSystemBlock(string(quoted))
+		}
+		out, setErr := sjson.SetRawBytes(body, key, []byte(appendRawArrayElement(current.Raw, element)))
 		return out, setErr == nil, setErr
 	}
 	joined := text
@@ -263,12 +270,23 @@ func armorInjectMessages(body []byte, rawMessages string, prompt string, quotedP
 	return out, err == nil, err
 }
 
+// claudeSystemBlock 构造 Claude 形态的 system text block。
+// 带 cache_control: ephemeral —— 破甲词固定在 system 前缀，打上缓存断点后
+// 多轮对话第 2 轮起命中上游 prompt cache，TTFT 与输入费用同时下降。
+// 上游非 Claude 协议时会忽略该字段，无害。
+func claudeSystemBlock(quotedText string) string {
+	return fmt.Sprintf(`{"type":"text","text":%s,"cache_control":{"type":"ephemeral"}}`, quotedText)
+}
+
 // armorInjectClaudeSystem 处理 Claude 顶层 system（string 或 content block 数组）。
-func armorInjectClaudeSystem(body []byte, system gjson.Result, prompt string, quotedPrompt string, mode string) ([]byte, bool, error) {
+func armorInjectClaudeSystem(body []byte, info *RelayInfo, system gjson.Result, prompt string, quotedPrompt string, mode string) ([]byte, bool, error) {
 	switch {
 	case system.IsArray():
-		block := fmt.Sprintf(`{"type":"text","text":%s}`, quotedPrompt)
-		out, err := sjson.SetRawBytes(body, "system", []byte(prependRawArrayElement(system.Raw, block)))
+		element := fmt.Sprintf(`{"type":"text","text":%s}`, quotedPrompt)
+		if armorIsClaudeFormat(info) {
+			element = claudeSystemBlock(quotedPrompt)
+		}
+		out, err := sjson.SetRawBytes(body, "system", []byte(prependRawArrayElement(system.Raw, element)))
 		return out, err == nil, err
 	case system.Type == gjson.String:
 		out, err := sjson.SetBytes(body, "system", armorJoinPrompt(prompt, system.String(), mode))

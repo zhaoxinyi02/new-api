@@ -884,6 +884,13 @@ func (info *RelayInfo) GetIsStream() bool {
 	return info != nil && info.IsStream
 }
 
+func (info *RelayInfo) GetRetryIndex() int {
+	if info == nil {
+		return 0
+	}
+	return info.RetryIndex
+}
+
 func (info *RelayInfo) GetReasoningEffort() string {
 	if info == nil {
 		return ""

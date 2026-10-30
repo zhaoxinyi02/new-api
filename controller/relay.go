@@ -186,6 +186,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		attemptStart := time.Now()
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -200,8 +202,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
 			relayInfo.LastError = nil
+			logRelayCompletion(c, relayInfo, retryParam.GetRetry()+1, time.Since(attemptStart))
 			return
 		}
+
+		logger.LogInfo(c, common.LogText("attempt %d failed in %s: status=%d error=%s",
+			retryParam.GetRetry()+1, time.Since(attemptStart).Round(time.Millisecond),
+			newAPIError.StatusCode, newAPIError.Error()))
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
@@ -220,6 +227,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := common.LogText("retry: %s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
+}
+
+// logRelayCompletion 记录成功请求的耗时与 TTFT，用于区分「注入/线路导致的慢」
+// 和「上游本身的慢」。
+func logRelayCompletion(c *gin.Context, info *relaycommon.RelayInfo, attempts int, attemptElapsed time.Duration) {
+	fields := []any{"attempts", attempts, "last_attempt", attemptElapsed.Round(time.Millisecond)}
+	if !info.FirstResponseTime.IsZero() {
+		fields = append(fields, "ttft", info.FirstResponseTime.Sub(info.StartTime).Round(time.Millisecond))
+	}
+	parts := make([]string, 0, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		parts = append(parts, fmt.Sprintf("%s=%v", fields[i], fields[i+1]))
+	}
+	logger.LogInfo(c, common.LogText("relay request completed: %s", strings.Join(parts, " ")))
 }
 
 // CountClaudeTokens implements Anthropic's token-counting utility endpoint.

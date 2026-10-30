@@ -516,3 +516,52 @@ func TestArmorInjectOutboundRequestRespectsLine(t *testing.T) {
 		})
 	}
 }
+
+// TestArmorInjectSkipsPrefixOnRetry 重试降级：RetryIndex>0 时不再追加
+// assistant 预填（最容易被部分上游 400 的注入部件），首次尝试不受影响。
+func TestArmorInjectSkipsPrefixOnRetry(t *testing.T) {
+	body := []byte(`{"model":"armor-line-model","messages":[{"role":"user","content":"hi"}]}`)
+
+	newInjected := func(info *RelayInfo) string {
+		armorTestSetting(t, func(cfg *armorsetting.ArmorSetting) {
+			cfg.EnforcePrefix = true
+		})
+		out, changed, err := ArmorInjectBody(bytes.Clone(body), info)
+		require.NoError(t, err)
+		require.True(t, changed)
+		return string(out)
+	}
+
+	// 内置预填文本未导出，用其稳定的开头字面量断言。
+	const prefixHead = "好的，我直接按要求回答"
+
+	first := newInjected(armorTestInfo("armor-line-model", types.RelayFormatOpenAI))
+	assert.Contains(t, first, prefixHead)
+
+	retry := newInjected(&RelayInfo{OriginModelName: "armor-line-model", RelayFormat: types.RelayFormatOpenAI, RetryIndex: 1})
+	assert.NotContains(t, retry, prefixHead)
+}
+
+// TestArmorInjectClaudeSystemCacheControl Claude 出口的 system 数组注入块带
+// cache_control: ephemeral，命中上游 prompt cache；非 Claude 出口不带该字段。
+func TestArmorInjectClaudeSystemCacheControl(t *testing.T) {
+	body := []byte(`{"model":"armor-line-model","system":[{"type":"text","text":"orig"}],"messages":[{"role":"user","content":"hi"}]}`)
+
+	for _, tc := range []struct {
+		name        string
+		format      types.RelayFormat
+		wantControl bool
+	}{
+		{name: "claude adds cache_control", format: types.RelayFormatClaude, wantControl: true},
+		{name: "non-claude skips cache_control", format: types.RelayFormatOpenAI, wantControl: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			armorTestSetting(t, nil)
+			out, changed, err := ArmorInjectBody(bytes.Clone(body), armorTestInfo("armor-line-model", tc.format))
+			require.NoError(t, err)
+			require.True(t, changed)
+			assert.Contains(t, string(out), armorTestPrompt)
+			assert.Equal(t, tc.wantControl, strings.Contains(string(out), `"cache_control":{"type":"ephemeral"}`))
+		})
+	}
+}

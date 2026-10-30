@@ -71,6 +71,10 @@ func TestShouldRetryByStatusCode(t *testing.T) {
 func TestShouldRetryByStatusCode_DefaultMatchesLegacyBehavior(t *testing.T) {
 	require.False(t, ShouldRetryByStatusCode(200))
 	require.False(t, ShouldRetryByStatusCode(400))
+	// 请求体本身有问题（上游对每个渠道都会拒），默认不换渠道重发。
+	require.False(t, ShouldRetryByStatusCode(404))
+	require.False(t, ShouldRetryByStatusCode(413))
+	require.False(t, ShouldRetryByStatusCode(422))
 	require.True(t, ShouldRetryByStatusCode(401))
 	require.False(t, ShouldRetryByStatusCode(408))
 	require.True(t, ShouldRetryByStatusCode(429))

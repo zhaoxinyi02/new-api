@@ -7402,5 +7402,9 @@
     "Ready to get started?": "现在就开始",
     "One key for all your AI models": "一个 Key 打通所有模型",
     "Register, top up by QR code or bank transfer, and start calling right away.": "注册后扫码付款或对公转账充值，立刻开始调用。"
-  }
+  },
+  "{{hours}}-hour quota window": "{{hours}}小时额度窗口",
+  "Weekly quota window": "每周额度窗口",
+  "Quota window": "额度窗口",
+  "Resets {{time}}": "重置于 {{time}}"
 }

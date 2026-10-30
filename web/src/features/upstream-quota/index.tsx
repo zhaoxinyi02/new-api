@@ -14,10 +14,56 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import { formatQuota } from '@/lib/format'
 
 import { getUpstreamQuotaMonitor } from './api'
-import { summarizeUpstreamQuota } from './summary'
+import { summarizeUpstreamQuota, type UpstreamQuotaWindow } from './summary'
+
+function windowLabel(window: UpstreamQuotaWindow, t: (key: string, opts?: Record<string, unknown>) => string): string {  if (window.unit === 3) {
+    return t('{{hours}}-hour quota window', { hours: window.number })
+  }
+  if (window.unit === 6) {
+    return t('Weekly quota window')
+  }
+  return t('Quota window')
+}
+
+function ZhipuPlanWindows(props: {
+  windows: UpstreamQuotaWindow[]
+  planLevel: string | null
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className='min-w-56 space-y-2'>
+      {props.planLevel && (
+        <Badge variant='secondary' className='uppercase'>
+          {props.planLevel}
+        </Badge>
+      )}
+      {props.windows.map((w) => (
+        <div key={`${w.unit}-${w.number}-${w.total}-${w.remaining}-${w.next_reset_time}`} className='space-y-1'>
+          <div className='flex items-center justify-between gap-2 text-xs'>
+            <span className='font-medium'>
+              {windowLabel(w, t)}
+            </span>
+            <span className='text-muted-foreground tabular-nums'>
+              {w.remaining} / {w.total} ({w.percentage}%)
+            </span>
+          </div>
+          <Progress value={100 - w.percentage} aria-label={windowLabel(w, t)} />
+          {w.next_reset_time > 0 && (
+            <div className='text-muted-foreground text-[11px]'>
+              {t('Resets {{time}}', {
+                time: dayjs(w.next_reset_time).format('MM-DD HH:mm'),
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function UpstreamQuotaPage() {
   const { t } = useTranslation()
@@ -133,11 +179,20 @@ function UpstreamQuotaPage() {
                           {formatQuota(item.used_quota)}
                         </td>
                         <td className='py-2 pr-4'>
-                          {summaryText}
-                          {summary.modelCount !== null && (
-                            <span className='text-muted-foreground ml-1'>
-                              ({t('Models in plan')}: {summary.modelCount})
-                            </span>
+                          {summary.windows.length > 0 ? (
+                            <ZhipuPlanWindows
+                              windows={summary.windows}
+                              planLevel={summary.planLevel}
+                            />
+                          ) : (
+                            <>
+                              {summaryText}
+                              {summary.modelCount !== null && (
+                                <span className='text-muted-foreground ml-1'>
+                                  ({t('Models in plan')}: {summary.modelCount})
+                                </span>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className='text-muted-foreground max-w-56 py-2'>

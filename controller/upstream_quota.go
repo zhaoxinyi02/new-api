@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -42,12 +43,19 @@ type UpstreamQuotaItem struct {
 var upstreamQuotaClient = &http.Client{Timeout: 8 * time.Second}
 
 func upstreamQuotaGet(url, key string) (int, []byte, error) {
+	return upstreamQuotaGetAuth(url, "Bearer "+key)
+}
+
+// upstreamQuotaGetAuth 允许自定义 Authorization 值。
+// 智谱国内站（open.bigmodel.cn）的 monitor 接口要裸 key，国际站（api.z.ai）要 Bearer。
+func upstreamQuotaGetAuth(url, authorization string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return 0, nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Authorization", authorization)
 	req.Header.Set("User-Agent", "new-api-upstream-quota")
+	req.Header.Set("accept", "application/json")
 	resp, err := upstreamQuotaClient.Do(req)
 	if err != nil {
 		return 0, nil, err
@@ -96,28 +104,104 @@ func probeUpstreamQuota(ch *model.Channel) (map[string]any, string) {
 }
 
 func probeZhipuCodingPlan(base, key string) (map[string]any, string) {
-	code, body, err := upstreamQuotaGet(strings.TrimRight(base, "/")+"/models", key)
+	// 套餐内模型数（/models 存活探测）
+	modelCode, body, err := upstreamQuotaGet(strings.TrimRight(base, "/")+"/models", key)
+	modelCount := 0
+	modelsOk := false
+	if err == nil && modelCode == http.StatusOK {
+		var parsed struct {
+			Data []struct {
+				Id string `json:"id"`
+			} `json:"data"`
+		}
+		if common.Unmarshal(body, &parsed) == nil {
+			modelCount = len(parsed.Data)
+			modelsOk = true
+		}
+	}
+
+	// 套餐余量：官方 monitor 接口（社区从控制台抓包确认的稳定端点）。
+	// 挂在域名根路径，与 coding base 的 /api/coding/paas/v4 无关。
+	// 国内站（open.bigmodel.cn）要求裸 key；国际站（api.z.ai）要求 Bearer 前缀。
+	auth := "Bearer " + key
+	if strings.Contains(base, "bigmodel.cn") {
+		auth = key
+	}
+	monitorBase := base
+	if u, err := url.Parse(base); err == nil && u.Scheme != "" && u.Host != "" {
+		monitorBase = u.Scheme + "://" + u.Host
+	}
+	code, body, err := upstreamQuotaGetAuth(strings.TrimRight(monitorBase, "/")+"/api/monitor/usage/quota/limit", auth)
 	if err != nil {
+		if modelsOk {
+			return map[string]any{"kind": "zhipu_coding_plan", "plan_models": modelCount},
+				fmt.Sprintf("key 有效；余量查询失败：%v", err)
+		}
 		return nil, "探测失败：" + err.Error()
 	}
 	if code != http.StatusOK {
+		if modelsOk {
+			return map[string]any{"kind": "zhipu_coding_plan", "plan_models": modelCount},
+				fmt.Sprintf("key 有效；余量接口返回 %d", code)
+		}
 		return nil, fmt.Sprintf("上游返回 %d（key 可能失效）", code)
 	}
-	var parsed struct {
-		Data []struct {
-			Id string `json:"id"`
+	var quota struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			Level  string `json:"level"`
+			Limits []struct {
+				Type          string `json:"type"`
+				Unit          int    `json:"unit"`
+				Number        int    `json:"number"`
+				Usage         int64  `json:"usage"`
+				Remaining     int64  `json:"remaining"`
+				Percentage    int    `json:"percentage"`
+				NextResetTime int64  `json:"nextResetTime"`
+			} `json:"limits"`
 		} `json:"data"`
 	}
-	_ = common.Unmarshal(body, &parsed)
-	names := make([]string, 0, len(parsed.Data))
-	for _, m := range parsed.Data {
-		names = append(names, m.Id)
+	if common.Unmarshal(body, &quota) != nil || !strings.HasPrefix(strings.TrimLeft(string(body), " \t\n"), "{") {
+		if modelsOk {
+			return map[string]any{"kind": "zhipu_coding_plan", "plan_models": modelCount},
+				"key 有效；余量接口响应解析失败"
+		}
+		return nil, "余量接口响应解析失败"
 	}
-	return map[string]any{
+	if quota.Code != 0 && quota.Code != 200 {
+		if modelsOk {
+			return map[string]any{"kind": "zhipu_coding_plan", "plan_models": modelCount},
+				fmt.Sprintf("key 有效；余量接口返回 %d（%s）", quota.Code, quota.Msg)
+		}
+		return nil, fmt.Sprintf("余量接口返回 %d（%s）", quota.Code, quota.Msg)
+	}
+
+	// 双窗口：unit 3 = 小时（5h 主窗口），unit 6 = 周（每周总窗口）
+	windows := make([]map[string]any, 0, len(quota.Data.Limits))
+	for _, l := range quota.Data.Limits {
+		if l.Type != "CREDIT_LIMIT" {
+			continue
+		}
+		windows = append(windows, map[string]any{
+			"unit":            l.Unit,
+			"number":          l.Number,
+			"total":           l.Usage,
+			"remaining":       l.Remaining,
+			"percentage":      l.Percentage,
+			"next_reset_time": l.NextResetTime,
+		})
+	}
+	info := map[string]any{
 		"kind":        "zhipu_coding_plan",
-		"plan_models": len(names),
-		"model_list":  names,
-	}, "key 有效；套餐余量官方暂无公开接口"
+		"plan_models": modelCount,
+		"plan_level":  quota.Data.Level,
+		"windows":     windows,
+	}
+	if len(windows) == 0 {
+		return info, "key 有效；余量接口未返回额度窗口"
+	}
+	return info, ""
 }
 
 func probeOpenAIBilling(base, key string) (map[string]any, string) {

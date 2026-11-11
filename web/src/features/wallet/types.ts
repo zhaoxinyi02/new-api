@@ -333,6 +333,12 @@ export interface TopupOrderDetail {
   /** Legal entity behind the configured payment information */
   seller: string
   /**
+   * Opaque display code derived server-side from the account id. Receipts and
+   * the stamped PDF print this instead of the raw id so the documents leak no
+   * signal about the platform's account count.
+   */
+  account_code?: string
+  /**
    * Present when the payment was applied to a plan instead of a wallet credit;
    * the receipt then shows the plan the customer bought.
    */

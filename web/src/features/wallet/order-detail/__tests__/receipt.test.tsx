@@ -155,9 +155,12 @@ it('renders every receipt section from the order returned by the API', async () 
   expect(screen.getByText('新购')).toBeVisible()
   // The sales channel is read from the shared /api/status payload.
   expect(await screen.findByText('澜算中转站')).toBeVisible()
-  expect(screen.getByText('用户 ID: 1')).toBeVisible()
-  expect(screen.getAllByText('lansuan')).toHaveLength(2)
-  expect(screen.getAllByText('湖北省澜算科技有限责任公司')).toHaveLength(2)
+  // The raw user id is never printed; receipts show the derived account code.
+  expect(screen.queryByText(/用户 ID/)).not.toBeInTheDocument()
+  expect(screen.getAllByText(/^LS[0-9A-Z]{10}$/).length).toBeGreaterThan(0)
+  // The hidden PDF rasterization stage repeats receipt content off-screen.
+  expect(screen.getAllByText('lansuan').length).toBeGreaterThanOrEqual(2)
+  expect(screen.getAllByText('湖北省澜算科技有限责任公司').length).toBeGreaterThanOrEqual(2)
 
   // Payment section.
   expect(screen.getByText('扫码付款')).toBeVisible()
@@ -194,7 +197,7 @@ it('renders a plan purchase instead of a wallet credit', async () => {
   expect(screen.getAllByText('套餐额度').length).toBeGreaterThan(0)
   expect(screen.getByText('已用额度')).toBeVisible()
   expect(screen.getByText('生效')).toBeVisible()
-  expect(screen.getByText(/~ \d{4}-\d{2}-\d{2}/)).toBeVisible()
+  expect(screen.getAllByText(/~ \d{4}-\d{2}-\d{2}/).length).toBeGreaterThan(0)
 
   // The paid amount is unchanged, while the credited wallet balance is gone.
   expect(screen.getAllByText(/[$¥]\s?1,?000(\.\d+)?/).length).toBeGreaterThan(0)

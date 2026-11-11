@@ -702,9 +702,13 @@ func GetTopUpDetail(c *gin.Context) {
 		payer = user.Username
 	}
 	detail := gin.H{
-		"order":        topUp,
-		"payer":        payer,
-		"seller":       paymentSellerName(),
+		"order":  topUp,
+		"payer":  payer,
+		"seller": paymentSellerName(),
+		// Opaque display code derived from the account id; receipts and the
+		// stamped PDF print this instead of the raw id so the documents leak
+		// no signal about the platform's account count.
+		"account_code": common.DeriveAccountCode(topUp.UserId),
 		"plan":         nil,
 		"subscription": nil,
 	}

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -150,6 +151,10 @@ func TestGetTopUpDetailReturnsReceiptFields(t *testing.T) {
 	// paid, and the seller comes from the收款信息 the operator configured.
 	assert.Equal(t, "receipt-owner", data["payer"])
 	assert.Equal(t, "湖北省澜算科技有限责任公司", data["seller"])
+	// The account code hides the raw user id (and with it the platform's
+	// account count) from receipts and the stamped PDF.
+	assert.Regexp(t, `^LS[0-9A-Z]{10}$`, data["account_code"])
+	assert.NotContains(t, data["account_code"], fmt.Sprint(ownerId))
 
 	order := data["order"].(map[string]any)
 	assert.Equal(t, detailTestTradeNo, order["trade_no"])

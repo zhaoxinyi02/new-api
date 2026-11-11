@@ -23,6 +23,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { useStatus } from '@/hooks/use-status'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 
+import { deriveAccountCode } from '../pdf/account-code'
 import {
   formatTimestamp,
   getPaymentMethodName,
@@ -45,7 +46,9 @@ export function OrderReceipt(props: { detail: TopupOrderDetail }) {
 
   const order = props.detail.order
   const statusConfig = getStatusConfig(order.status)
-  const payer = props.detail.payer || `${t('User ID')}: ${order.user_id}`
+  const accountCode =
+    props.detail.account_code ?? deriveAccountCode(order.user_id)
+  const payer = props.detail.payer || `${t('Account code')}: ${accountCode}`
   const seller = props.detail.seller
   const salesChannel = status?.system_name
 
@@ -54,7 +57,7 @@ export function OrderReceipt(props: { detail: TopupOrderDetail }) {
     { label: t('Order ID'), value: order.id, mono: true },
     { label: t('Created at'), value: formatTimestamp(order.create_time) },
     { label: t('Payment Method'), value: t('Prepaid') },
-    { label: t('Order account'), value: `${t('User ID')}: ${order.user_id}` },
+    { label: t('Order account'), value: accountCode },
     { label: t('Buyer account'), value: payer },
     { label: t('Payer account'), value: payer },
   ]

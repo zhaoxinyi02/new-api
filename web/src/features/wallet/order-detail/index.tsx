@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 
 import { useOrderDetail } from '../hooks/use-order-detail'
 import { OrderReceipt } from './components/order-receipt'
+import { OrderPdfButton } from './pdf/order-pdf-button'
 
 /**
  * Standalone order detail page. It replaces the old dialog so an order receipt
@@ -59,6 +60,7 @@ export function WalletOrderDetail(props: { tradeNo: string }) {
           <ArrowLeft aria-hidden='true' />
           {t('Back to wallet')}
         </Button>
+        {orderQuery.data && <OrderPdfButton detail={orderQuery.data} />}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='mx-auto flex w-full max-w-5xl flex-col gap-4 sm:gap-5'>

@@ -27,12 +27,15 @@ const RENDER_SCALE = 2
 
 /**
  * Slice a tall canvas into fixed-aspect page images and append them to the
- * document, so content longer than one A4 page flows onto extra pages.
+ * document, so content longer than one A4 page flows onto extra pages. The
+ * first document reuses jsPDF's initial blank page; every later document must
+ * open its own page, even for its first slice.
  */
 async function appendCanvasPages(
   doc: jsPDF,
   canvas: HTMLCanvasElement,
-  orientation: 'portrait' | 'landscape'
+  orientation: 'portrait' | 'landscape',
+  reuseInitialPage = false
 ) {
   const pageWidth = orientation === 'portrait' ? A4_WIDTH_MM : A4_HEIGHT_MM
   const pageHeight = orientation === 'portrait' ? A4_HEIGHT_MM : A4_WIDTH_MM
@@ -59,7 +62,7 @@ async function appendCanvasPages(
       canvas.width,
       visibleHeight
     )
-    if (y > 0) {
+    if (y > 0 || !reuseInitialPage) {
       doc.addPage('a4', orientation)
     }
     doc.addImage(
@@ -87,7 +90,7 @@ export async function generateOrderPdf(
     html2canvas(billNode, { scale: RENDER_SCALE, backgroundColor: '#ffffff' }),
   ])
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-  await appendCanvasPages(doc, agreementCanvas, 'portrait')
+  await appendCanvasPages(doc, agreementCanvas, 'portrait', true)
   await appendCanvasPages(doc, billCanvas, 'landscape')
   return doc.output('blob')
 }

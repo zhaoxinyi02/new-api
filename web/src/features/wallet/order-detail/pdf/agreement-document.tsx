@@ -111,7 +111,8 @@ export const AgreementDocument = forwardRef<HTMLDivElement, { detail: TopupOrder
   function AgreementDocument(props, ref) {
     const { order, plan, subscription } = props.detail
     const seller = props.detail.seller || t('Lansuan Technology')
-    const payer = props.detail.payer || `${t('User ID')}: ${order.user_id}`
+    const accountCode = props.detail.account_code || deriveAccountCode(order.user_id)
+    const payer = props.detail.payer || accountCode
     const completeTime = formatDateTime(order.complete_time ?? order.create_time)
     const product = plan ? plan.title : t('Wallet top-up')
     const configuration = plan
@@ -129,13 +130,13 @@ export const AgreementDocument = forwardRef<HTMLDivElement, { detail: TopupOrder
         <div style={styles.docNo}>No.{order.trade_no}</div>
 
         <div style={styles.clause}>甲方（“您”）：{payer}</div>
-        <div style={styles.clause}>账号编号：{props.detail.account_code || deriveAccountCode(order.user_id)}</div>
+        <div style={styles.clause}>账号编号：{accountCode}</div>
         <div style={styles.clause}>平台：{window.location.host}</div>
         <div style={styles.clause}>乙方（“澜算科技”）：{seller}</div>
 
         <div style={styles.sectionTitle}>1. 服务内容</div>
         <div style={styles.clause}>
-          1.1 您通过您在本平台账号 {order.user_id} 购买或使用乙方提供的产品/服务。本订单购买内容如下：
+          1.1 您通过您在本平台的账号（{accountCode}）购买或使用乙方提供的产品/服务。本订单购买内容如下：
         </div>
         <table
           style={{

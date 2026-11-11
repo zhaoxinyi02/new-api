@@ -145,8 +145,9 @@ export const BillDocument = forwardRef<
 >(function BillDocument(props, ref) {
   const { order, plan, subscription } = props.detail
     const seller = props.detail.seller || t('Lansuan Technology')
-    const payer = props.detail.payer || `${t('User ID')}: ${order.user_id}`
+    const payer = props.detail.payer || accountCode
     const statusConfig = getStatusConfig(order.status)
+    const accountCode = props.detail.account_code || deriveAccountCode(order.user_id)
     const money = formatLocalCurrencyAmount(order.money)
     const noDeduction = `-${formatLocalCurrencyAmount(0)}`
     const credited = formatCurrencyFromUSD(order.amount, {
